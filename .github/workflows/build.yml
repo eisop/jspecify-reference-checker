@@ -19,12 +19,12 @@ jobs:
         with:
           repository: jspecify/jspecify
           path: jspecify
-# Clone the EISOP CF if necessary:
-#      - name: Check out eisop/checker-framework
-#        uses: actions/checkout@v4
-#        with:
-#          repository: eisop/checker-framework
-#          path: checker-framework
+      # Clone the EISOP CF if necessary:
+      - name: Check out eisop/checker-framework
+        uses: actions/checkout@v4
+        with:
+          repository: eisop/checker-framework
+          path: checker-framework
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
