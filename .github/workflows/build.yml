@@ -25,6 +25,8 @@ jobs:
         with:
           repository: eisop/checker-framework
           path: checker-framework
+          # Temporary, until that branch is merged.
+          ref: typetools-3.43.0-fixes
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
