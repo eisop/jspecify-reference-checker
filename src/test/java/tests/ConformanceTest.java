@@ -168,6 +168,7 @@ public final class ConformanceTest {
             "override.return.invalid",
             "return.type.incompatible",
             "threadlocal.must.include.null",
+            "type.arguments.not.inferred",
             "type.argument.type.incompatible");
 
     private static final ImmutableSet<String> IRRELEVANT_ANNOTATION_KEYS =
