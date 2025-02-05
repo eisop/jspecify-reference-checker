@@ -182,6 +182,7 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
         case "override.return.invalid":
         case "return.type.incompatible":
         case "threadlocal.must.include.null":
+        case "type.arguments.not.inferred":
         case "type.argument.type.incompatible":
           return true;
         default:

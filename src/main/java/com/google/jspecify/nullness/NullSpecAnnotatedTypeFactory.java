@@ -641,14 +641,14 @@ final class NullSpecAnnotatedTypeFactory
          *
          * Specifically, we see those calls in the case of uninferred type arguments (I think).
          *
-         * TODO(cpovirk): So maybe this special case and the isUninferredTypeArgument case below
+         * TODO(cpovirk): So maybe this special case and the isTypeArgOfRawType case below
          * should look more similar now that *all* wildcards seen by this method might be
          * uninferred?
          */
         return true;
       }
       if (subtype instanceof AnnotatedWildcardType
-          && ((AnnotatedWildcardType) subtype).isUninferredTypeArgument()) {
+          && ((AnnotatedWildcardType) subtype).isTypeArgOfRawType()) {
         /*
          * Hope for the best, as the supertype does.
          *
