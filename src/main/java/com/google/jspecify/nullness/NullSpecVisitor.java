@@ -503,11 +503,11 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   }
 
   @Override
-  public Void visitMethod(MethodTree tree, Void p) {
+  public void processMethodTree(MethodTree tree) {
     // For discussion of short-circuiting, see processClassTree.
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
     if (util.hasSuppressWarningsNullness(annotations)) {
-      return null;
+      return;
     }
 
     Tree returnType = tree.getReturnType();
@@ -518,7 +518,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
         checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
       }
     }
-    return super.visitMethod(tree, p);
+    super.processMethodTree(tree);
   }
 
   @Override
