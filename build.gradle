@@ -182,7 +182,7 @@ tasks.register('includeJSpecifyJDK')  {
             standardOutput = System.out
             errorOutput = System.err
 
-            mainClass = 'org.checkerframework.framework.stub.JavaStubifier'
+            mainClass = 'org.checkerframework.framework.stubifier.JavaStubifier'
             args dstDir
         }
     }
