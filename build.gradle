@@ -177,6 +177,7 @@ tasks.register('includeJSpecifyJDK')  {
                 include specFile.substring(srcPrefixSize)
             }
         }
+        println("Classpath: " + sourceSets.main.runtimeClasspath.join("\n"))
         injected.execOps.javaexec {
             classpath = sourceSets.main.runtimeClasspath
             standardOutput = System.out
