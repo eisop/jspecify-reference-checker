@@ -1,21 +1,14 @@
 version: 2
 updates:
 - package-ecosystem: "gradle"
-  directory: "/"
+  directories:
+    - "/"
+    - "/conformance-test-framework"
+    - "/usage-demo"
   schedule:
     interval: "daily"
 
 - package-ecosystem: "github-actions"
   directory: "/"
-  schedule:
-    interval: "daily"
-
-- package-ecosystem: "gradle"
-  directory: "/conformance-test-framework"
-  schedule:
-    interval: "daily"
-
-- package-ecosystem: "gradle"
-  directory: "/usage-demo"
   schedule:
     interval: "daily"
