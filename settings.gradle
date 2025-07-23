@@ -13,6 +13,7 @@ providers.exec {
 dependencyResolutionManagement {
     versionCatalogs {
         libs {
+            // Make sure to also update the version in ./demo
             version("checkerFramework", "3.49.3-eisop1")
 
             library("checkerFramework-checker", "io.github.eisop", "checker").versionRef("checkerFramework")

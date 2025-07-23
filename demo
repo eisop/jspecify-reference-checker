@@ -10,7 +10,7 @@ if [ ! -e "${jspecify}" ]; then
   jspecify="${dir}/build/jspecify-${version}.jar"
   if [ ! -e "${jspecify}" ]; then
     echo "Downloading $(basename "${jspecify}") from Maven central"
-    mvn -q org.apache.maven.plugins:maven-dependency-plugin:3.7.1:copy \
+    mvn -q org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy \
       -Dartifact="org.jspecify:jspecify:${version}" \
       -DoutputDirectory="$(dirname "${jspecify}")"
   fi
@@ -19,11 +19,12 @@ fi
 checkerFrameworkDir="${dir}/../checker-framework/"
 checkerFrameworkJar="${checkerFrameworkDir}/checker/dist/checker.jar"
 if [ ! -e "${checkerFrameworkJar}" ]; then
-  cfVersion="3.42.0-eisop4"
+  // Make sure to also update the version in ./settings.gradle
+  cfVersion="3.49.3-eisop1"
   checkerFrameworkJar="${dir}/build/checker-${cfVersion}-all.jar"
   if [ ! -e "${checkerFrameworkJar}" ]; then
     echo "Downloading $(basename "${checkerFrameworkJar}") from Maven central"
-    mvn -q org.apache.maven.plugins:maven-dependency-plugin:3.7.1:copy \
+    mvn -q org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy \
       -Dartifact="io.github.eisop:checker:${cfVersion}:jar:all" \
       -DoutputDirectory="$(dirname "${checkerFrameworkJar}")"
   fi
