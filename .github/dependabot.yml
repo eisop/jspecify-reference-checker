@@ -4,8 +4,7 @@ updates:
   directories:
     - "/"
     - "/conformance-test-framework"
-      # See whether this causes a Dependabot cycle
-      # - "/usage-demo"
+    - "/usage-demo"
   schedule:
     interval: "daily"
 
