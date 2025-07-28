@@ -2,6 +2,11 @@ name: Continuous Integration
 
 on: [push, pull_request]
 
+env:
+  # Set to 'true' if a release of the EISOP CF should be used.
+  # Otherwise, it will be cloned and built.
+  EISOP_RELEASE: true
+
 jobs:
   build-and-test:
     name: Build and Test
@@ -22,10 +27,11 @@ jobs:
       # Clone the EISOP CF if necessary:
       - name: Check out eisop/checker-framework
         uses: actions/checkout@v4
+        if: ${{ env.EISOP_RELEASE != 'true' }}
         with:
           repository: eisop/checker-framework
           path: checker-framework
-          # Temporary, until that branch is merged.
+          # Optionally, if a particular branch should be used.
           # ref: typetools-3.43.0-fixes
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -34,9 +40,15 @@ jobs:
           java-version: 17
       - name: Set up Gradle
         uses: gradle/gradle-build-action@v3
-      - name: Build and Test
+      - name: Build and Test (EISOP release)
+        if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        # run: ./gradlew build conformanceTests demoTest --include-build ../jspecify
+        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify
+        env:
+          SHALLOW: 1
+          JSPECIFY_CONFORMANCE_TEST_MODE: details
+      - name: Build and Test (EISOP build)
+        if: ${{ env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
         run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework
         env:
@@ -48,10 +60,12 @@ jobs:
           git fetch --depth=1 origin samples-google-prototype-eisop
           git checkout samples-google-prototype-eisop
         working-directory: jspecify
-      - name: Run Samples Tests
-        if: always()
+      - name: Run Samples Tests (EISOP release)
+        if: ${{ always() && env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        # run: ./gradlew jspecifySamplesTest --include-build ../jspecify
+        run: ./gradlew jspecifySamplesTest --include-build ../jspecify
+      - name: Run Samples Tests (EISOP build)
+        if: ${{ always() && env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
         run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework
 
