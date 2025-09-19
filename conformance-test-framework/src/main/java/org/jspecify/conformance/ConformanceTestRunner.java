@@ -126,7 +126,7 @@ public final class ConformanceTestRunner {
     switch (Mode.fromEnvironment()) {
       case DETAILS:
         System.out.print(testResults.report(true));
-        // fall-through
+      // fall-through
 
       case COMPARE:
         assertThat(testResults.report(false)).isEqualTo(asCharSource(testReport, UTF_8).read());
