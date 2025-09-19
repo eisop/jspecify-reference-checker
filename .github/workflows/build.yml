@@ -16,17 +16,17 @@ jobs:
         working-directory: jspecify-reference-checker
     steps:
       - name: Check out jspecify-reference checker
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: jspecify-reference-checker
       - name: Check out jspecify
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: jspecify/jspecify
           path: jspecify
       # Clone the EISOP CF if necessary:
       - name: Check out eisop/checker-framework
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         if: ${{ env.EISOP_RELEASE != 'true' }}
         with:
           repository: eisop/checker-framework
@@ -76,7 +76,7 @@ jobs:
     if: github.repository == 'jspecify/jspecify-reference-checker' && github.ref_name == 'main' && github.event_name == 'push'
     steps:
     - name: Check out the code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
