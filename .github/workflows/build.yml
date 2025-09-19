@@ -64,7 +64,7 @@ jobs:
       - name: Run Samples Tests (EISOP release)
         if: ${{ always() && env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify
+        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --warning-mode all
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
