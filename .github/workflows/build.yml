@@ -44,14 +44,14 @@ jobs:
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify
+        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --warning-mode all
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
       - name: Build and Test (EISOP build)
         if: ${{ env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework
+        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -68,7 +68,7 @@ jobs:
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework
+        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all
 
   publish-snapshot:
     name: Publish Conformance Test Framework Snapshot
@@ -86,7 +86,7 @@ jobs:
     - name: Set up Gradle
       uses: gradle/gradle-build-action@v3
     - name: Publish snapshot
-      run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository
+      run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository --warning-mode all
       env:
         ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.sonatype_username }}
         ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.sonatype_password }}
