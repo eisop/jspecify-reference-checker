@@ -24,7 +24,6 @@ jobs:
         with:
           repository: jspecify/jspecify
           path: jspecify
-          ref: gradle-9.0.0
       # Clone the EISOP CF if necessary:
       - name: Check out eisop/checker-framework
         uses: actions/checkout@v5
