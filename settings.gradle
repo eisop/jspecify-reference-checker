@@ -6,9 +6,12 @@ include 'conformance-test-framework'
 // See https://docs.gradle.org/current/userguide/composite_builds.html#included_build_declaring_substitutions
 includeBuild(".")
 
-providers.exec {
-    executable './initialize-project'
-}.result.get()
+def proc = "./initialize-project".execute()
+proc.waitForProcessOutput(System.out, System.err)
+
+if (proc.exitValue() != 0) {
+    throw new GradleException("Execution of ./initialize-project failed with exit code ${proc.exitValue()}")
+}
 
 dependencyResolutionManagement {
     versionCatalogs {
