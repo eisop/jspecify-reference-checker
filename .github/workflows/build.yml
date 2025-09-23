@@ -24,6 +24,16 @@ jobs:
         with:
           repository: jspecify/jspecify
           path: jspecify
+      # Explicitly check out jspecify/jdk before initialize-project runs.
+      # At least in eisop/jspecify-reference-checker we want to use
+      # jspecify/jdk, not eisop/jdk.
+      # I am not sure what the best setup is - at this point initialize-project
+      # does not do anything useful.
+      - name: Check out jspecify/jdk
+        uses: actions/checkout@v5
+        with:
+          repository: jspecify/jdk
+          path: jdk
       # Clone the EISOP CF if necessary:
       - name: Check out eisop/checker-framework
         uses: actions/checkout@v5
@@ -39,7 +49,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Set up Gradle
-        uses: gradle/gradle-build-action@v3
+        uses: gradle/actions/setup-gradle@v4
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
@@ -83,7 +93,7 @@ jobs:
         distribution: temurin
         java-version: 17
     - name: Set up Gradle
-      uses: gradle/gradle-build-action@v3
+      uses: gradle/actions/setup-gradle@v4
     - name: Publish snapshot
       run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository
       env:
