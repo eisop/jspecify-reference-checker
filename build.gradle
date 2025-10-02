@@ -121,12 +121,6 @@ if (jspecify != null) {
     assemble.dependsOn(jspecify.task(':assemble'))
 }
 
-// Enable exec/javaexec
-interface InjectedExecOps {
-    @Inject
-    ExecOperations getExecOps()
-}
-
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add("-Xlint:all")
     // ErrorProne makes suppressing these easier
@@ -247,10 +241,16 @@ tasks.register('jspecifySamplesTest', Test) {
     description = 'Run the checker against the JSpecify samples.'
     group = 'verification'
     shouldRunAfter test
+    outputs.upToDateWhen { false }
     include '**/NullSpecTest$Lenient.class'
     include '**/NullSpecTest$Strict.class'
 
-    inputs.files(unzipConformanceTestSuite)
+    testClassesDirs = files('build/classes/java/test')
+    classpath = sourceSets.test.runtimeClasspath
+
+    // TODO: does this actually run on the correct tests? Should this unzip again??
+    def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
+    inputs.dir(conformanceTests)
 }
 
 tasks.register('unzipConformanceTestSuite', Copy) {
@@ -262,16 +262,25 @@ tasks.register('unzipConformanceTestSuite', Copy) {
 tasks.register('conformanceTests', Test) {
     group = 'verification'
     include '**/ConformanceTest.class'
+    dependsOn 'unzipConformanceTestSuite'
+
     shouldRunAfter test
+    outputs.upToDateWhen { false }
+
+    testClassesDirs = files('build/classes/java/test')
+    classpath = sourceSets.test.runtimeClasspath
+
+    def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
+    def deps = fileTree("${conformanceTests}/deps").join(":")
 
     // Conformance tests
-    inputs.files(unzipConformanceTestSuite)
+    inputs.dir(conformanceTests)
     inputs.files("tests/ConformanceTest-report.txt")
     doFirst {
         systemProperties([
-            "JSpecifyConformanceTest.inputs": "${unzipConformanceTestSuite.destinationDir}/assertions/org/jspecify/conformance/tests",
+            "JSpecifyConformanceTest.inputs": "${conformanceTests}/assertions/org/jspecify/conformance/tests",
             "JSpecifyConformanceTest.report": "tests/ConformanceTest-report.txt",
-            "JSpecifyConformanceTest.deps"  : fileTree("${unzipConformanceTestSuite.destinationDir}/deps").join(":")
+            "JSpecifyConformanceTest.deps"  : deps
         ])
     }
 
@@ -279,7 +288,7 @@ tasks.register('conformanceTests', Test) {
     inputs.files("tests/ConformanceTestOnSamples-report.txt")
     doFirst {
         systemProperties([
-            "JSpecifyConformanceTest.samples.inputs": "${unzipConformanceTestSuite.destinationDir}/samples",
+            "JSpecifyConformanceTest.samples.inputs": "${conformanceTests}/samples",
             "JSpecifyConformanceTest.samples.report": "tests/ConformanceTestOnSamples-report.txt"
         ])
     }
@@ -308,8 +317,9 @@ tasks.register('demoTest', Exec)  {
         errorOutput = Files.newOutputStream(outputFile.get().asFile.toPath())
     }
     doLast {
-        if (!outputFile.get().asFile.text.contains("SimpleSample.java:7: error:")) {
-            throw new AssertionError("`./demo SimpleSample.java` did not run correctly. Error output:\n$errorOutput")
+        def outputFileText = outputFile.get().asFile.text
+        if (!outputFileText.contains("SimpleSample.java:7: error:")) {
+            throw new AssertionError("`./demo SimpleSample.java` did not contain the expected error. Error output:\n${outputFileText}")
         }
     }
 }
