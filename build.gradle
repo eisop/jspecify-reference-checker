@@ -60,6 +60,8 @@ ext {
 
     // Location of the jspecify/jdk clone, relative to this directory
     jspecifyJdkHome = '../jdk'
+
+    errorproneSupportsCurrentJdk = Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
 }
 
 configurations {
@@ -97,8 +99,10 @@ dependencies {
 
     conformanceTestSuite libs.jspecify.conformanceTests
 
-    errorproneJavac libs.errorProne.javac
-    errorprone libs.errorProne.core
+    if (errorproneSupportsCurrentJdk) {
+        errorproneJavac libs.errorProne.javac
+        errorprone libs.errorProne.core
+    }
 }
 
 configurations {
@@ -126,6 +130,7 @@ tasks.withType(JavaCompile).configureEach {
     // ErrorProne makes suppressing these easier
     options.compilerArgs.add("-Xlint:-fallthrough")
 
+    options.errorprone.enabled = errorproneSupportsCurrentJdk
     options.errorprone.disable("BadImport")
     options.errorprone.disable("VoidUsed")
 
