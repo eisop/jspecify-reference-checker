@@ -9,11 +9,14 @@ env:
 
 jobs:
   build-and-test:
-    name: Build and Test
+    name: Build and Test on JDK ${{ matrix.java_version }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: jspecify-reference-checker
+    strategy:
+      matrix:
+        java_version: [17, 21, 25]
     steps:
       - name: Check out jspecify-reference checker
         uses: actions/checkout@v5
@@ -47,7 +50,7 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: ${{ matrix.java_version }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build and Test (EISOP release)
