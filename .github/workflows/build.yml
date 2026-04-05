@@ -19,11 +19,11 @@ jobs:
         java_version: [17, 21, 25]
     steps:
       - name: Check out jspecify-reference checker
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           path: jspecify-reference-checker
       - name: Check out jspecify
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: jspecify/jspecify
           path: jspecify
@@ -33,13 +33,13 @@ jobs:
       # I am not sure what the best setup is - at this point initialize-project
       # does not do anything useful.
       - name: Check out jspecify/jdk
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: jspecify/jdk
           path: jdk
       # Clone the EISOP CF if necessary:
       - name: Check out eisop/checker-framework
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         if: ${{ env.EISOP_RELEASE != 'true' }}
         with:
           repository: eisop/checker-framework
@@ -52,7 +52,7 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java_version }}
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
@@ -89,14 +89,14 @@ jobs:
     if: github.repository == 'jspecify/jspecify-reference-checker' && github.ref_name == 'main' && github.event_name == 'push'
     steps:
     - name: Check out the code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6
     - name: Set up Java
       uses: actions/setup-java@v5
       with:
         distribution: temurin
         java-version: 17
     - name: Set up Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v5
     - name: Publish snapshot
       run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository --warning-mode all --no-configuration-cache
       env:
