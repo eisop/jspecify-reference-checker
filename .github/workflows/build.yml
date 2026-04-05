@@ -49,7 +49,7 @@ jobs:
           distribution: temurin
           java-version: 17
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
+        uses: gradle/actions/setup-gradle@v6
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
@@ -93,7 +93,7 @@ jobs:
         distribution: temurin
         java-version: 17
     - name: Set up Gradle
-      uses: gradle/actions/setup-gradle@v5
+      uses: gradle/actions/setup-gradle@v6
     - name: Publish snapshot
       run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository
       env:
