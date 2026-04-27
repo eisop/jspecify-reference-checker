@@ -249,11 +249,11 @@ tasks.register('jspecifySamplesTest', Test) {
     outputs.upToDateWhen { false }
     include '**/NullSpecTest$Lenient.class'
     include '**/NullSpecTest$Strict.class'
+    dependsOn 'unzipConformanceTestSuite'
 
     testClassesDirs = files('build/classes/java/test')
     classpath = sourceSets.test.runtimeClasspath
 
-    // TODO: does this actually run on the correct tests? Should this unzip again??
     def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
     inputs.dir(conformanceTests)
 }
@@ -276,12 +276,12 @@ tasks.register('conformanceTests', Test) {
     classpath = sourceSets.test.runtimeClasspath
 
     def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
-    def deps = fileTree("${conformanceTests}/deps").join(":")
 
     // Conformance tests
     inputs.dir(conformanceTests)
     inputs.files("tests/ConformanceTest-report.txt")
     doFirst {
+        def deps = fileTree("${conformanceTests}/deps").join(":")
         systemProperties([
             "JSpecifyConformanceTest.inputs": "${conformanceTests}/assertions/org/jspecify/conformance/tests",
             "JSpecifyConformanceTest.report": "tests/ConformanceTest-report.txt",
