@@ -281,11 +281,18 @@ tasks.register('conformanceTests', Test) {
     inputs.dir(conformanceTests)
     inputs.files("tests/ConformanceTest-report.txt")
     doFirst {
-        def deps = fileTree("${conformanceTests}/deps").join(":")
+        def depsDir = new File("${conformanceTests}/deps")
+        def depsList = []
+        if (depsDir.exists()) {
+            depsDir.eachFileRecurse { f ->
+                if (f.isFile()) depsList << f.absolutePath
+            }
+            depsList.sort()
+        }
         systemProperties([
             "JSpecifyConformanceTest.inputs": "${conformanceTests}/assertions/org/jspecify/conformance/tests",
             "JSpecifyConformanceTest.report": "tests/ConformanceTest-report.txt",
-            "JSpecifyConformanceTest.deps"  : deps
+            "JSpecifyConformanceTest.deps"  : depsList.join(":")
         ])
     }
 
