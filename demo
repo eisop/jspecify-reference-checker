@@ -20,7 +20,7 @@ checkerFrameworkDir="${dir}/../checker-framework/"
 checkerFrameworkJar="${checkerFrameworkDir}/checker/dist/checker.jar"
 if [ ! -e "${checkerFrameworkJar}" ]; then
   // Make sure to also update the version in ./settings.gradle
-  cfVersion="3.49.3-eisop1"
+  cfVersion="3.49.5-eisop1"
   checkerFrameworkJar="${dir}/build/checker-${cfVersion}-all.jar"
   if [ ! -e "${checkerFrameworkJar}" ]; then
     echo "Downloading $(basename "${checkerFrameworkJar}") from Maven central"
