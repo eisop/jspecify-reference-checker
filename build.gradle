@@ -1,3 +1,4 @@
+import java.nio.file.Files
 import org.gradle.plugins.ide.eclipse.model.Output
 import org.gradle.plugins.ide.eclipse.model.SourceFolder
 
@@ -6,11 +7,11 @@ plugins {
     id 'java'
     id 'maven-publish'
 
-    id 'com.diffplug.spotless' version '6.25.0'
+    id 'com.diffplug.spotless' version '8.2.1'
     id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
-    id 'net.ltgt.errorprone' version '4.1.0'
+    id 'net.ltgt.errorprone' version '5.0.0'
     // To show task list as a tree, run: ./gradlew <taskname> taskTree
-    id 'com.dorongold.task-tree' version '4.0.0'
+    id 'com.dorongold.task-tree' version '4.0.1'
 }
 
 // Nexus Publish plugin requires a group/version at the root project.
@@ -59,6 +60,8 @@ ext {
 
     // Location of the jspecify/jdk clone, relative to this directory
     jspecifyJdkHome = '../jdk'
+
+    errorproneSupportsCurrentJdk = Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
 }
 
 configurations {
@@ -96,8 +99,18 @@ dependencies {
 
     conformanceTestSuite libs.jspecify.conformanceTests
 
-    errorproneJavac libs.errorProne.javac
-    errorprone libs.errorProne.core
+    if (errorproneSupportsCurrentJdk) {
+        errorproneJavac libs.errorProne.javac
+        errorprone libs.errorProne.core
+    }
+}
+
+configurations {
+    checkerFrameworkRuntimeClasspath {
+        canBeResolved = true
+        canBeConsumed = false
+        extendsFrom implementation
+    }
 }
 
 // If built with `--include-build path/to/checker-framework` then
@@ -112,17 +125,12 @@ if (jspecify != null) {
     assemble.dependsOn(jspecify.task(':assemble'))
 }
 
-// Enable exec/javaexec
-interface InjectedExecOps {
-    @Inject
-    ExecOperations getExecOps()
-}
-
 tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.add("-Xlint:all")
     // ErrorProne makes suppressing these easier
     options.compilerArgs.add("-Xlint:-fallthrough")
 
+    options.errorprone.enabled = errorproneSupportsCurrentJdk
     options.errorprone.disable("BadImport")
     options.errorprone.disable("VoidUsed")
 
@@ -143,10 +151,7 @@ tasks.withType(JavaCompile).configureEach {
             .collect { "--add-exports=jdk.compiler/com.sun.tools.javac.$it=ALL-UNNAMED" })
 }
 
-tasks.register('includeJSpecifyJDK')  {
-    group = 'Build'
-    dependsOn 'compileJava'
-
+tasks.register('copyJSpecifyJDK', Copy) {
     def srcDir = "${jspecifyJdkHome}/src"
     // This directory needs to be stored at the top-level of the resulting .jar file.
     // org.checkerframework.framework.stub.AnnotationFileElementTypes will then load
@@ -156,39 +161,50 @@ tasks.register('includeJSpecifyJDK')  {
     inputs.dir file(srcDir)
     outputs.dir file(dstDir)
 
-    def injected = project.objects.newInstance(InjectedExecOps)
-
-    doLast {
-        FileTree srcTree = fileTree(dir: srcDir)
-        NavigableSet<String> specFiles = new TreeSet<>();
-        srcTree.visit { FileVisitDetails fvd ->
-            if (!fvd.file.isDirectory() && fvd.file.name.matches('.*\\.java')) {
-                fvd.getFile().readLines().any { line ->
-                    if (line.contains('org.jspecify')) {
-                        specFiles.add(fvd.file.absolutePath)
-                        return true;
-                    }
+    FileTree srcTree = fileTree(dir: srcDir)
+    NavigableSet<String> specFiles = new TreeSet<>();
+    srcTree.visit { FileVisitDetails fvd ->
+        if (!fvd.file.isDirectory() && fvd.file.name.matches('.*\\.java')) {
+            fvd.getFile().readLines().any { line ->
+                if (line.contains('org.jspecify')) {
+                    specFiles.add(fvd.file.absolutePath)
+                    return true;
                 }
             }
         }
-        String absoluteSrcDir = file(srcDir).absolutePath
-        int srcPrefixSize = absoluteSrcDir.size()
-        copy {
-            from(srcDir)
-            into(dstDir)
-            for (String specFile : specFiles) {
-                include specFile.substring(srcPrefixSize)
-            }
-        }
-        injected.execOps.javaexec {
-            classpath = sourceSets.main.runtimeClasspath
-            standardOutput = System.out
-            errorOutput = System.err
-
-            mainClass = 'org.checkerframework.framework.stubifier.JavaStubifier'
-            args dstDir
-        }
     }
+    String absoluteSrcDir = file(srcDir).absolutePath
+    int srcPrefixSize = absoluteSrcDir.size()
+
+    from(srcDir)
+    into(dstDir)
+    for (String specFile : specFiles) {
+        include specFile.substring(srcPrefixSize)
+    }
+}
+
+tasks.register('includeJSpecifyJDK', JavaExec)  {
+    group = 'Build'
+
+    if (checkerFramework != null) {
+        dependsOn(checkerFramework.task(":checker:assembleForJavac"))
+    }
+    dependsOn 'copyJSpecifyJDK'
+
+    // See comment in copyJSpecifyJDK.
+    def dstDir = "${buildDir}/generated/resources/annotated-jdk/src/"
+
+    inputs.dir file(dstDir)
+    outputs.dir file(dstDir)
+
+    // We only need the CF on the classpath.
+    classpath = configurations.checkerFrameworkRuntimeClasspath
+
+    standardOutput = System.out
+    errorOutput = System.err
+
+    mainClass = 'org.checkerframework.framework.stubifier.JavaStubifier'
+    args dstDir
 }
 
 processResources.dependsOn(includeJSpecifyJDK)
@@ -230,10 +246,16 @@ tasks.register('jspecifySamplesTest', Test) {
     description = 'Run the checker against the JSpecify samples.'
     group = 'verification'
     shouldRunAfter test
+    outputs.upToDateWhen { false }
     include '**/NullSpecTest$Lenient.class'
     include '**/NullSpecTest$Strict.class'
+    dependsOn 'unzipConformanceTestSuite'
 
-    inputs.files(unzipConformanceTestSuite)
+    testClassesDirs = files('build/classes/java/test')
+    classpath = sourceSets.test.runtimeClasspath
+
+    def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
+    inputs.dir(conformanceTests)
 }
 
 tasks.register('unzipConformanceTestSuite', Copy) {
@@ -245,16 +267,25 @@ tasks.register('unzipConformanceTestSuite', Copy) {
 tasks.register('conformanceTests', Test) {
     group = 'verification'
     include '**/ConformanceTest.class'
+    dependsOn 'unzipConformanceTestSuite'
+
     shouldRunAfter test
+    outputs.upToDateWhen { false }
+
+    testClassesDirs = files('build/classes/java/test')
+    classpath = sourceSets.test.runtimeClasspath
+
+    def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
 
     // Conformance tests
-    inputs.files(unzipConformanceTestSuite)
+    inputs.dir(conformanceTests)
     inputs.files("tests/ConformanceTest-report.txt")
     doFirst {
+        def deps = fileTree("${conformanceTests}/deps").join(":")
         systemProperties([
-            "JSpecifyConformanceTest.inputs": "${unzipConformanceTestSuite.destinationDir}/assertions/org/jspecify/conformance/tests",
+            "JSpecifyConformanceTest.inputs": "${conformanceTests}/assertions/org/jspecify/conformance/tests",
             "JSpecifyConformanceTest.report": "tests/ConformanceTest-report.txt",
-            "JSpecifyConformanceTest.deps"  : fileTree("${unzipConformanceTestSuite.destinationDir}/deps").join(":")
+            "JSpecifyConformanceTest.deps"  : deps
         ])
     }
 
@@ -262,7 +293,7 @@ tasks.register('conformanceTests', Test) {
     inputs.files("tests/ConformanceTestOnSamples-report.txt")
     doFirst {
         systemProperties([
-            "JSpecifyConformanceTest.samples.inputs": "${unzipConformanceTestSuite.destinationDir}/samples",
+            "JSpecifyConformanceTest.samples.inputs": "${conformanceTests}/samples",
             "JSpecifyConformanceTest.samples.report": "tests/ConformanceTestOnSamples-report.txt"
         ])
     }
@@ -272,9 +303,10 @@ tasks.named('check').configure {
     dependsOn('conformanceTests')
 }
 
-clean.doFirst {
+tasks.register('deleteTestsBuild') {
     delete "${rootDir}/tests/build/"
 }
+clean.dependsOn('deleteTestsBuild')
 
 tasks.register('demoTest', Exec)  {
     group = 'verification'
@@ -284,10 +316,15 @@ tasks.register('demoTest', Exec)  {
     executable '/bin/sh'
     args 'demo', 'SimpleSample.java'
     ignoreExitValue = true
-    errorOutput = new ByteArrayOutputStream()
+    def outputFile = layout.buildDirectory.file('demoTest-output.txt')
+    outputs.file(outputFile)
+    doFirst {
+        errorOutput = Files.newOutputStream(outputFile.get().asFile.toPath())
+    }
     doLast {
-        if (!errorOutput.toString().contains("SimpleSample.java:7: error:")) {
-            throw new AssertionError("`./demo SimpleSample.java` did not run correctly. Error output:\n$errorOutput")
+        def outputFileText = outputFile.get().asFile.text
+        if (!outputFileText.contains("SimpleSample.java:7: error:")) {
+            throw new AssertionError("`./demo SimpleSample.java` did not contain the expected error. Error output:\n${outputFileText}")
         }
     }
 }
@@ -297,28 +334,31 @@ tasks.register('demoTest', Exec)  {
  google-java-format depends on checker-qual, which is built by a subproject.
  On a clean build, the checker-qual JAR file doesn't exist yet, so Spotless throws an error.
  The file doesn't have to be correct; it just has to be a JAR file.
- So here, before the spotless block,  we create a meaningless JAR file at that location if it doesn't already exist.
+ So here, before the spotless block, we create a meaningless JAR file at that location if it doesn't already exist.
  See https://github.com/jspecify/jspecify-reference-checker/issues/81
  */
-
-if (checkerFramework != null) {
-    def cfQualJar =
-            checkerFramework.projectDir.toPath()
-            .resolve("checker-qual/build/libs/checker-qual-${libs.versions.checkerFramework.get()}.jar")
-    def injected = project.objects.newInstance(InjectedExecOps)
-
-    if (!cfQualJar.toFile().exists()) {
-        mkdir(cfQualJar.parent)
-        injected.execOps.exec {
-            executable 'jar'
-            args = [
-                'cf',
-                cfQualJar,
-                buildFile.path // Use this build script file!
-            ]
-        }
-    }
-}
+/* This work-around isn't compatible with the configuration cache.
+ We don't need it, b/c we depend on EISOP CF and Spotless depends on typetools CF.
+ */
+/*
+ if (checkerFramework != null) {
+ def cfQualJar =
+ checkerFramework.projectDir.toPath()
+ .resolve("checker-qual/build/libs/checker-qual-${libs.versions.checkerFramework.get()}.jar")
+ def injected = project.objects.newInstance(InjectedExecOps)
+ if (!cfQualJar.toFile().exists()) {
+ mkdir(cfQualJar.parent)
+ injected.execOps.exec {
+ executable 'jar'
+ args = [
+ 'cf',
+ cfQualJar,
+ buildFile.path // Use this build script file!
+ ]
+ }
+ }
+ }
+ */
 
 spotless {
     java {
@@ -329,7 +369,7 @@ spotless {
     groovyGradle {
         target '**/*.gradle'
         greclipse()
-        indentWithSpaces(4)
+        leadingTabsToSpaces(4)
         trimTrailingWhitespace()
     }
 }

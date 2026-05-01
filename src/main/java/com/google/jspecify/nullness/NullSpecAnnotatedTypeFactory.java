@@ -16,8 +16,6 @@ package com.google.jspecify.nullness;
 
 import static com.google.jspecify.nullness.NullSpecAnnotatedTypeFactory.IsDeclaredOrArrayOrNull.IS_DECLARED_OR_ARRAY_OR_NULL;
 import static com.google.jspecify.nullness.Util.nameMatches;
-import static com.sun.source.tree.Tree.Kind.IDENTIFIER;
-import static com.sun.source.tree.Tree.Kind.MEMBER_SELECT;
 import static com.sun.source.tree.Tree.Kind.NOT_EQUAL_TO;
 import static com.sun.source.tree.Tree.Kind.NULL_LITERAL;
 import static java.util.Arrays.asList;
@@ -816,16 +814,16 @@ final class NullSpecAnnotatedTypeFactory
       case TYPEVAR:
         return singletonList(((AnnotatedTypeVariable) type).getUpperBound());
 
-        /*
-         * We used to have a case here for WILDCARD. It shouldn't be necessary now that we've merged
-         * the CF implementation capture conversion. That said, we shouldn't need wildcard handling
-         * in isNullnessSubtype, either, and yet we do.
-         *
-         * So we could consider restoring wildcard handling here, too. But for now, we've left it
-         * out, since its implementation required some digging into javac internal types and calling
-         * getAnnotatedType (always a little scary, as discussed in
-         * NullSpecTreeAnnotator.visitMethodInvocation and elsewhere).
-         */
+      /*
+       * We used to have a case here for WILDCARD. It shouldn't be necessary now that we've merged
+       * the CF implementation capture conversion. That said, we shouldn't need wildcard handling
+       * in isNullnessSubtype, either, and yet we do.
+       *
+       * So we could consider restoring wildcard handling here, too. But for now, we've left it
+       * out, since its implementation required some digging into javac internal types and calling
+       * getAnnotatedType (always a little scary, as discussed in
+       * NullSpecTreeAnnotator.visitMethodInvocation and elsewhere).
+       */
 
       default:
         return emptyList();
@@ -1256,7 +1254,7 @@ final class NullSpecAnnotatedTypeFactory
       if (!util.isOrOverrides(elementFromUse(tree), util.mapGetOrDefaultElement)) {
         return false;
       }
-      if (tree.getMethodSelect().getKind() != MEMBER_SELECT) {
+      if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
         /*
          * We don't care much about handling IDENTIFIER, since we're not likely to be analyzing a
          * Map implementation with a call to getOrDefault on itself, at least not with a
@@ -1292,7 +1290,7 @@ final class NullSpecAnnotatedTypeFactory
           || elementFromUse(tree) != util.classGetEnumConstantsElement.get()) {
         return false;
       }
-      if (tree.getMethodSelect().getKind() != MEMBER_SELECT) {
+      if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
         /*
          * We don't care much about handling IDENTIFIER, since we're not likely to be analyzing
          * Class itself. But see the TODO in upperBoundOnToArrayElementType.
@@ -1305,7 +1303,7 @@ final class NullSpecAnnotatedTypeFactory
     }
 
     private boolean isGetCauseOnExecutionException(MethodInvocationTree tree) {
-      if (tree.getMethodSelect().getKind() != MEMBER_SELECT) {
+      if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
         /*
          * We don't care much about handling IDENTIFIER, since we're not likely to be analyzing
          * ExecutionException itself (nor a subclass of it). But see the TODO in
@@ -1395,9 +1393,9 @@ final class NullSpecAnnotatedTypeFactory
        * TypeMirror, as in isGetCauseOnExecutionException.
        */
       Tree receiver;
-      if (tree.getMethodSelect().getKind() == MEMBER_SELECT) {
+      if (tree.getMethodSelect() instanceof MemberSelectTree) {
         receiver = ((MemberSelectTree) tree.getMethodSelect()).getExpression();
-      } else if (tree.getMethodSelect().getKind() == IDENTIFIER) {
+      } else if (tree.getMethodSelect() instanceof IdentifierTree) {
         /*
          * TODO(cpovirk): We need to figure out whether the call is being made on the instance of
          * the enclosing class or on another class that encloses that.

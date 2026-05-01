@@ -9,11 +9,14 @@ env:
 
 jobs:
   build-and-test:
-    name: Build and Test
+    name: Build and Test on JDK ${{ matrix.java_version }}
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: jspecify-reference-checker
+    strategy:
+      matrix:
+        java_version: [17, 21, 25]
     steps:
       - name: Check out jspecify-reference checker
         uses: actions/checkout@v6
@@ -47,20 +50,20 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: ${{ matrix.java_version }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify
+        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --warning-mode all
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
       - name: Build and Test (EISOP build)
         if: ${{ env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework
+        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -73,11 +76,11 @@ jobs:
       - name: Run Samples Tests (EISOP release)
         if: ${{ always() && env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify
+        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --warning-mode all
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework
+        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all
 
   publish-snapshot:
     name: Publish Conformance Test Framework Snapshot
@@ -95,7 +98,7 @@ jobs:
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v6
     - name: Publish snapshot
-      run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository
+      run: ./gradlew publishConformanceTestFrameworkPublicationToSonatypeRepository --warning-mode all --no-configuration-cache
       env:
         ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.sonatype_username }}
         ORG_GRADLE_PROJECT_sonatypePassword: ${{ secrets.sonatype_password }}

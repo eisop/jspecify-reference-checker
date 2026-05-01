@@ -16,11 +16,7 @@ package com.google.jspecify.nullness;
 
 import static com.google.jspecify.nullness.Util.IMPLEMENTATION_VARIABLE_KINDS;
 import static com.google.jspecify.nullness.Util.nameMatches;
-import static com.sun.source.tree.Tree.Kind.ANNOTATED_TYPE;
-import static com.sun.source.tree.Tree.Kind.ARRAY_TYPE;
 import static com.sun.source.tree.Tree.Kind.EXTENDS_WILDCARD;
-import static com.sun.source.tree.Tree.Kind.MEMBER_SELECT;
-import static com.sun.source.tree.Tree.Kind.PARAMETERIZED_TYPE;
 import static com.sun.source.tree.Tree.Kind.PRIMITIVE_TYPE;
 import static com.sun.source.tree.Tree.Kind.SUPER_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.UNBOUNDED_WILDCARD;
@@ -54,6 +50,7 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.ParenthesizedTree;
+import com.sun.source.tree.PrimitiveTypeTree;
 import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
@@ -257,10 +254,10 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
      * I would not be at all surprised if there are additional cases that we still haven't covered.
      */
     Tree typeToCheckForAnnotations =
-        expression.getKind() == PARAMETERIZED_TYPE
+        expression instanceof ParameterizedTypeTree
             ? ((ParameterizedTypeTree) expression).getType()
             : expression;
-    if (typeToCheckForAnnotations.getKind() == ANNOTATED_TYPE) {
+    if (typeToCheckForAnnotations instanceof AnnotatedTypeTree) {
       /*
        * In all cases in which we report outer.annotated, we know that we're dealing with a true
        * inner class (`@Nullable Outer.Inner`), not a static nested class (`@Nullable Map.Entry`).
@@ -474,7 +471,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
     if (isPrimitiveOrArrayOfPrimitive(tree.getType())) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
-    } else if (tree.getType().getKind() == MEMBER_SELECT) {
+    } else if (tree.getType() instanceof MemberSelectTree) {
       checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
     }
 
@@ -488,9 +485,9 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
        *
        * I have an alternative that appears to work, but it could probably be simplified.
        */
-      if (tree.getType().getKind() == ARRAY_TYPE) {
+      if (tree.getType() instanceof ArrayTypeTree) {
         checkNoNullnessAnnotationsOnArrayItself(tree, "local.variable.annotated");
-      } else if (tree.getType().getKind() == ANNOTATED_TYPE) {
+      } else if (tree.getType() instanceof AnnotatedTypeTree) {
         checkNoNullnessAnnotations(
             tree,
             ((AnnotatedTypeTree) tree.getType()).getAnnotations(),
@@ -514,7 +511,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     if (returnType != null) {
       if (isPrimitiveOrArrayOfPrimitive(returnType)) {
         checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
-      } else if (returnType.getKind() == MEMBER_SELECT) {
+      } else if (returnType instanceof MemberSelectTree) {
         checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
       }
     }
@@ -556,18 +553,18 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   }
 
   private boolean isPrimitiveOrArrayOfPrimitive(Tree type) {
-    return type.getKind() == PRIMITIVE_TYPE
-        || (type.getKind() == ARRAY_TYPE
+    return type instanceof PrimitiveTypeTree
+        || (type instanceof ArrayTypeTree
             && isPrimitiveOrArrayOfPrimitive(((ArrayTypeTree) type).getType()));
   }
 
   private void checkNoNullnessAnnotationsOnArrayItself(
       VariableTree treeToReportOn, String messageKey) {
     Tree tree = treeToReportOn.getType();
-    while (tree.getKind() == ARRAY_TYPE) {
+    while (tree instanceof ArrayTypeTree) {
       tree = ((ArrayTypeTree) tree).getType();
     }
-    if (tree.getKind() == ANNOTATED_TYPE) {
+    if (tree instanceof AnnotatedTypeTree) {
       checkNoNullnessAnnotations(
           treeToReportOn, ((AnnotatedTypeTree) tree).getAnnotations(), messageKey);
     }
