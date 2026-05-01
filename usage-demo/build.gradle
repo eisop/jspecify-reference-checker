@@ -45,6 +45,7 @@ dependencies {
 }
 
 checkerFramework {
+    version = "dependencies"
     checkers = [
         'com.google.jspecify.nullness.NullSpecChecker',
     ]
