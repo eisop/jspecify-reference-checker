@@ -61,6 +61,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
 import javax.lang.model.element.AnnotationMirror;
@@ -1287,7 +1288,7 @@ final class NullSpecAnnotatedTypeFactory
 
     private boolean isGetEnumConstantsOnEnumClass(MethodInvocationTree tree) {
       if (util.classGetEnumConstantsElement.isEmpty()
-          || !elementFromUse(tree).equals(util.classGetEnumConstantsElement.get())) {
+          || !Objects.equals(elementFromUse(tree), util.classGetEnumConstantsElement.get())) {
         return false;
       }
       if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
@@ -1493,7 +1494,8 @@ final class NullSpecAnnotatedTypeFactory
 
     private boolean areNullAndLambdaParameter(
         ExpressionTree u, ExpressionTree v, VariableTree lambdaParameter) {
-      return isNullExpression(u) && elementFromUse(v).equals(elementFromDeclaration(lambdaParameter));
+      return isNullExpression(u)
+          && Objects.equals(elementFromUse(v), elementFromDeclaration(lambdaParameter));
     }
 
     @Override

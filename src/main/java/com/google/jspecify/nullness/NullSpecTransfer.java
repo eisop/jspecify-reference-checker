@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
@@ -673,7 +674,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
       // Is the arg to map.get(...) the variable from the foreach?
       VariableElement forVariableElement = elementFromDeclaration(forLoop.getVariable());
-      if (!mapGetArgElement.equals(forVariableElement)) {
+      if (!Objects.equals(mapGetArgElement, forVariableElement)) {
         continue;
       }
 
