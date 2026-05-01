@@ -6,7 +6,7 @@ dependencyResolutionManagement {
     versionCatalogs {
         libs {
             // Make sure to also update the version in ./demo
-            version("checkerFramework", "3.49.3-eisop1")
+            version("checkerFramework", "3.49.5-eisop1")
 
             library("checkerFramework-checker", "io.github.eisop", "checker").versionRef("checkerFramework")
             library("checkerFramework-checker-qual", "io.github.eisop", "checker-qual").versionRef("checkerFramework")
