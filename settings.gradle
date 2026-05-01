@@ -2,10 +2,6 @@
 rootProject.name = "jspecify-reference-checker"
 include 'conformance-test-framework'
 
-// Lets the main build depend on the conformance subproject as org.jspecify:conformance-test-framework.
-// See https://docs.gradle.org/current/userguide/composite_builds.html#included_build_declaring_substitutions
-includeBuild(".")
-
 dependencyResolutionManagement {
     versionCatalogs {
         libs {

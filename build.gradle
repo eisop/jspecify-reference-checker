@@ -94,7 +94,7 @@ dependencies {
     testImplementation libs.checkerFramework.framework.test
     testImplementation libs.guava
     testImplementation libs.junit
-    testImplementation libs.jspecify.conformanceTestFramework
+    testImplementation project(':conformance-test-framework')
     testRuntimeOnly libs.jsr305 // jsr305 annotations are in some of the samples
 
     conformanceTestSuite libs.jspecify.conformanceTests
