@@ -610,7 +610,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
       // Is the receiver of path.getFileName(...) the variable from the foreach?
       VariableElement forVariableElement = elementFromDeclaration(forLoop.getVariable());
-      if (pathGetFileNameReceiverElement != forVariableElement) {
+      if (!pathGetFileNameReceiverElement.equals(forVariableElement)) {
         continue;
       }
 
@@ -673,7 +673,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
       // Is the arg to map.get(...) the variable from the foreach?
       VariableElement forVariableElement = elementFromDeclaration(forLoop.getVariable());
-      if (mapGetArgElement != forVariableElement) {
+      if (!mapGetArgElement.equals(forVariableElement)) {
         continue;
       }
 

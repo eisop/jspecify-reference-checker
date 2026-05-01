@@ -1287,7 +1287,7 @@ final class NullSpecAnnotatedTypeFactory
 
     private boolean isGetEnumConstantsOnEnumClass(MethodInvocationTree tree) {
       if (util.classGetEnumConstantsElement.isEmpty()
-          || elementFromUse(tree) != util.classGetEnumConstantsElement.get()) {
+          || !elementFromUse(tree).equals(util.classGetEnumConstantsElement.get())) {
         return false;
       }
       if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
@@ -1493,7 +1493,7 @@ final class NullSpecAnnotatedTypeFactory
 
     private boolean areNullAndLambdaParameter(
         ExpressionTree u, ExpressionTree v, VariableTree lambdaParameter) {
-      return isNullExpression(u) && elementFromUse(v) == elementFromDeclaration(lambdaParameter);
+      return isNullExpression(u) && elementFromUse(v).equals(elementFromDeclaration(lambdaParameter));
     }
 
     @Override
