@@ -63,7 +63,7 @@ jobs:
       - name: Build and Test (EISOP build)
         if: ${{ env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all
+        run: ./gradlew build conformanceTests demoTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -80,7 +80,7 @@ jobs:
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all
+        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
 
   publish-snapshot:
     name: Publish Conformance Test Framework Snapshot
