@@ -3,7 +3,7 @@
 plugins {
     id 'java'
     id 'com.diffplug.spotless' version '8.4.0'
-    id 'net.ltgt.errorprone' version '4.3.0'
+    id 'net.ltgt.errorprone' version '5.1.0'
     id 'org.checkerframework' version '0.6.48' apply false
 }
 
