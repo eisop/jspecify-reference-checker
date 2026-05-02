@@ -25,6 +25,7 @@ import static java.util.Collections.singleton;
 import static java.util.Collections.singletonList;
 import static java.util.Collections.unmodifiableList;
 import static javax.lang.model.element.ElementKind.ENUM_CONSTANT;
+import static javax.lang.model.element.ElementKind.TYPE_PARAMETER;
 import static javax.lang.model.type.TypeKind.ARRAY;
 import static javax.lang.model.type.TypeKind.DECLARED;
 import static javax.lang.model.type.TypeKind.INTERSECTION;
@@ -69,9 +70,11 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.TypeParameterElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import org.checkerframework.common.basetype.BaseTypeChecker;
@@ -689,6 +692,40 @@ final class NullSpecAnnotatedTypeFactory
   }
 
   boolean isNullInclusiveUnderEveryParameterization(AnnotatedTypeMirror type) {
+    /*
+     * For declared (non-captured) type variables with multiple bounds, use the
+     * source-declared bounds from TypeParameterElement.getBounds(). This avoids
+     * two pitfalls with the generic TYPEVAR lower-bound check below:
+     *
+     * 1. javac implicitly inserts java.lang.Object as the first bound for
+     *    interface-only intersections (e.g., {@code T extends @Nullable A & @Nullable B}).
+     *    The source-level element bounds don't include this implicit Object.
+     *
+     * 2. CF's copyIntersectionBoundAnnotations propagates @Nullable from any nullable
+     *    bound to ALL bounds, so CF-annotated bounds are unreliable for mixed-nullness
+     *    intersections (e.g., {@code T extends @Nullable Object & Lib}).
+     *
+     * Using TypeParameterElement.getBounds() gives us only the programmer-written bounds
+     * with their original source annotations, free of both issues.
+     */
+    if (type.getKind() == TYPEVAR
+        && !type.hasAnnotation(minusNull)
+        && !isCapturedTypeVariable(type.getUnderlyingType())) {
+      Element element = ((TypeVariable) type.getUnderlyingType()).asElement();
+      if (element.getKind() == TYPE_PARAMETER) {
+        List<? extends TypeMirror> sourceBounds = ((TypeParameterElement) element).getBounds();
+        if (sourceBounds.size() > 1) {
+          // Multi-bound: all source-declared bounds must be explicitly @Nullable for T to be
+          // null-inclusive under every parameterization.
+          for (TypeMirror sourceBound : sourceBounds) {
+            if (!hasExplicitNullableAnnotation(sourceBound)) {
+              return false;
+            }
+          }
+          return true;
+        }
+      }
+    }
     // We put the third case from the spec first because it's a mouthful.
     // (As discussed in the spec, we probably don't strictly need this case at all....)
     if (type.getKind() == TYPEVAR
@@ -819,6 +856,41 @@ final class NullSpecAnnotatedTypeFactory
 
     if (isUnionNullOrEquivalent(subtype)) {
       return false;
+    }
+
+    /*
+     * For declared (non-captured) type variables with multiple bounds, use the
+     * source-declared bounds from TypeParameterElement.getBounds(). This avoids two pitfalls
+     * with going through getUpperBounds() + the INTERSECTION check above:
+     *
+     * 1. javac implicitly inserts java.lang.Object as the first bound for interface-only
+     *    intersections (e.g., {@code T extends @Nullable A & @Nullable B}). The isUnannotatedObjectBound
+     *    check in the INTERSECTION block above would skip this implicit Object, but it also
+     *    skips an *explicit* unannotated Object (e.g., {@code T extends Object & @Nullable Lib}),
+     *    which should be treated as a non-null bound in NullMarked code.
+     *
+     * 2. CF's copyIntersectionBoundAnnotations propagates @Nullable from any bound to ALL
+     *    bounds, so the CF-annotated bounds passed to getUpperBounds() are unreliable for
+     *    mixed-nullness intersections.
+     *
+     * TypeParameterElement.getBounds() returns only the programmer-written bounds with their
+     * original source annotations, free of both issues. If any source-declared bound is not
+     * explicitly @Nullable and matches the supertype, a non-null path is established.
+     */
+    if (subtype.getKind() == TYPEVAR
+        && !isCapturedTypeVariable(subtype.getUnderlyingType())) {
+      Element element = ((TypeVariable) subtype.getUnderlyingType()).asElement();
+      if (element.getKind() == TYPE_PARAMETER) {
+        List<? extends TypeMirror> sourceBounds = ((TypeParameterElement) element).getBounds();
+        if (sourceBounds.size() > 1) {
+          for (TypeMirror sourceBound : sourceBounds) {
+            if (!hasExplicitNullableAnnotation(sourceBound) && supertypeMatcher.test(sourceBound)) {
+              return true;
+            }
+          }
+          return false;
+        }
+      }
     }
 
     if (supertypeMatcher.test(subtype.getUnderlyingType())) {
