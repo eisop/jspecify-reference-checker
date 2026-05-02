@@ -25,8 +25,10 @@ import static java.util.Collections.singleton;
 import static java.util.Collections.singletonList;
 import static java.util.Collections.unmodifiableList;
 import static javax.lang.model.element.ElementKind.ENUM_CONSTANT;
+import static javax.lang.model.element.ElementKind.TYPE_PARAMETER;
 import static javax.lang.model.type.TypeKind.ARRAY;
 import static javax.lang.model.type.TypeKind.DECLARED;
+import static javax.lang.model.type.TypeKind.INTERSECTION;
 import static javax.lang.model.type.TypeKind.NULL;
 import static javax.lang.model.type.TypeKind.TYPEVAR;
 import static javax.lang.model.type.TypeKind.WILDCARD;
@@ -69,7 +71,11 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.TypeParameterElement;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.IntersectionType;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import org.checkerframework.common.basetype.BaseTypeChecker;
@@ -678,14 +684,49 @@ final class NullSpecAnnotatedTypeFactory
               && isSubtype(superTV.getLowerBound(), subTV.getLowerBound());
         }
       }
-      return isNullInclusiveUnderEveryParameterization(supertype)
-          || isNullExclusiveUnderEveryParameterization(subtype)
-          || (nullnessEstablishingPathExists(subtype, supertype)
-              && !supertype.hasAnnotation(minusNull));
+      boolean nullInclSupertype = isNullInclusiveUnderEveryParameterization(supertype);
+      boolean nullExclSubtype = isNullExclusiveUnderEveryParameterization(subtype);
+      boolean pathExists = nullnessEstablishingPathExists(subtype, supertype);
+      boolean supertypeNotMinusNull = !supertype.hasAnnotation(minusNull);
+      return nullInclSupertype || nullExclSubtype || (pathExists && supertypeNotMinusNull);
     }
   }
 
   boolean isNullInclusiveUnderEveryParameterization(AnnotatedTypeMirror type) {
+    /*
+     * For declared (non-captured) type variables with multiple bounds, use the
+     * source-declared bounds from TypeParameterElement.getBounds(). This avoids
+     * two pitfalls with the generic TYPEVAR lower-bound check below:
+     *
+     * 1. javac implicitly inserts java.lang.Object as the first bound for
+     *    interface-only intersections (e.g., {@code T extends @Nullable A & @Nullable B}).
+     *    The source-level element bounds don't include this implicit Object.
+     *
+     * 2. CF's copyIntersectionBoundAnnotations propagates @Nullable from any nullable
+     *    bound to ALL bounds, so CF-annotated bounds are unreliable for mixed-nullness
+     *    intersections (e.g., {@code T extends @Nullable Object & Lib}).
+     *
+     * Using TypeParameterElement.getBounds() gives us only the programmer-written bounds
+     * with their original source annotations, free of both issues.
+     */
+    if (type.getKind() == TYPEVAR
+        && !type.hasAnnotation(minusNull)
+        && !isCapturedTypeVariable(type.getUnderlyingType())) {
+      Element element = ((TypeVariable) type.getUnderlyingType()).asElement();
+      if (element.getKind() == TYPE_PARAMETER) {
+        List<? extends TypeMirror> sourceBounds = ((TypeParameterElement) element).getBounds();
+        if (sourceBounds.size() > 1) {
+          // Multi-bound: all source-declared bounds must be explicitly @Nullable for T to be
+          // null-inclusive under every parameterization.
+          for (TypeMirror sourceBound : sourceBounds) {
+            if (!hasExplicitNullableAnnotation(sourceBound)) {
+              return false;
+            }
+          }
+          return true;
+        }
+      }
+    }
     // We put the third case from the spec first because it's a mouthful.
     // (As discussed in the spec, we probably don't strictly need this case at all....)
     if (type.getKind() == TYPEVAR
@@ -701,15 +742,36 @@ final class NullSpecAnnotatedTypeFactory
      * type have an AnnotationMirror of its own.
      *
      * ...well, sort of. As I understand it, what CF does is more that it tries to keep the
-     * AnnotationMirror of the intersecton type in sync with the AnnotationMirror of each of its
+     * AnnotationMirror of the intersection type in sync with the AnnotationMirror of each of its
      * components (which should themselves all match). So the intersection type "has" an
      * AnnotationMirror, but it provides no *additional* information beyond what is already carried
      * by its components' AnnotationMirrors.
      *
-     * Nevertheless, the result is that we don't need a special case here: The check below is
-     * redundant with the subsequent check on the intersection's components, but redundancy is
-     * harmless.
+     * When components all agree, checking the intersection type's annotation is redundant with
+     * checking the components, and the redundancy is harmless. However, when bounds have *mixed*
+     * nullness (e.g., {@code @Nullable A & B}), CF synthesizes an annotation for the intersection
+     * by copying the annotation of the "widest" (most-nullable) bound to ALL bounds. For example,
+     * for {@code @Nullable A & B}, CF annotates both the intersection and B as @Nullable, even
+     * though B itself is non-null. We must not rely on these synthesized CF annotations; instead,
+     * we check the original source annotations on each bound via the underlying IntersectionType.
+     * This gives the JSpecify-correct semantics: a value of {@code @Nullable A & B} cannot be null
+     * if B is non-null (regardless of what CF puts on B after propagation).
+     *
+     * <p>Note: javac implicitly adds {@code java.lang.Object} as the first bound of any
+     * interface-only intersection type. This implicit Object bound carries no source-level nullness
+     * information and must be skipped; see {@link #isUnannotatedObjectBound(TypeMirror)}.
      */
+    if (type.getKind() == INTERSECTION) {
+      for (TypeMirror rawBound : ((IntersectionType) type.getUnderlyingType()).getBounds()) {
+        if (isUnannotatedObjectBound(rawBound)) {
+          continue;
+        }
+        if (!hasExplicitNullableAnnotation(rawBound)) {
+          return false;
+        }
+      }
+      return true;
+    }
     return type.hasAnnotation(unionNull)
         || (!isLeastConvenientWorld && type.hasAnnotation(nullnessOperatorUnspecified));
   }
@@ -768,8 +830,68 @@ final class NullSpecAnnotatedTypeFactory
       return true;
     }
 
+    /*
+     * For intersection types (e.g., {@code @Nullable A & B}), CF synthesizes an annotation for
+     * the intersection type by copying the annotation of the "widest" (most-nullable) bound to ALL
+     * bounds. For {@code @Nullable A & B} in NullMarked code, CF annotates both the intersection
+     * and B as @Nullable, even though B is non-null. We must not rely on these synthesized CF
+     * annotations. Instead, we check the original source annotations on each bound via the
+     * underlying IntersectionType. If any bound is not explicitly @Nullable in the source (and
+     * therefore non-null by default in NullMarked code), that bound establishes non-nullness.
+     *
+     * <p>Note: javac implicitly adds {@code java.lang.Object} as the first bound of any
+     * interface-only intersection type. This implicit Object bound carries no source-level nullness
+     * information and must be skipped; see {@link #isUnannotatedObjectBound(TypeMirror)}.
+     */
+    if (subtype.getKind() == INTERSECTION) {
+      for (TypeMirror rawBound : ((IntersectionType) subtype.getUnderlyingType()).getBounds()) {
+        if (isUnannotatedObjectBound(rawBound)) {
+          continue;
+        }
+        if (!hasExplicitNullableAnnotation(rawBound) && supertypeMatcher.test(rawBound)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     if (isUnionNullOrEquivalent(subtype)) {
       return false;
+    }
+
+    /*
+     * For declared (non-captured) type variables with multiple bounds, use the
+     * source-declared bounds from TypeParameterElement.getBounds(). This avoids two pitfalls
+     * with going through getUpperBounds() + the INTERSECTION check above:
+     *
+     * 1. javac implicitly inserts java.lang.Object as the first bound for interface-only
+     *    intersections (e.g., {@code T extends @Nullable A & @Nullable B}). The isUnannotatedObjectBound
+     *    check in the INTERSECTION block above would skip this implicit Object, but it also
+     *    skips an *explicit* unannotated Object (e.g., {@code T extends Object & @Nullable Lib}),
+     *    which should be treated as a non-null bound in NullMarked code.
+     *
+     * 2. CF's copyIntersectionBoundAnnotations propagates @Nullable from any bound to ALL
+     *    bounds, so the CF-annotated bounds passed to getUpperBounds() are unreliable for
+     *    mixed-nullness intersections.
+     *
+     * TypeParameterElement.getBounds() returns only the programmer-written bounds with their
+     * original source annotations, free of both issues. If any source-declared bound is not
+     * explicitly @Nullable and matches the supertype, a non-null path is established.
+     */
+    if (subtype.getKind() == TYPEVAR
+        && !isCapturedTypeVariable(subtype.getUnderlyingType())) {
+      Element element = ((TypeVariable) subtype.getUnderlyingType()).asElement();
+      if (element.getKind() == TYPE_PARAMETER) {
+        List<? extends TypeMirror> sourceBounds = ((TypeParameterElement) element).getBounds();
+        if (sourceBounds.size() > 1) {
+          for (TypeMirror sourceBound : sourceBounds) {
+            if (!hasExplicitNullableAnnotation(sourceBound) && supertypeMatcher.test(sourceBound)) {
+              return true;
+            }
+          }
+          return false;
+        }
+      }
     }
 
     if (supertypeMatcher.test(subtype.getUnderlyingType())) {
@@ -838,6 +960,55 @@ final class NullSpecAnnotatedTypeFactory
   private boolean isUnionNullOrEquivalent(AnnotatedTypeMirror type) {
     return type.hasAnnotation(unionNull)
         || (isLeastConvenientWorld && type.hasAnnotation(nullnessOperatorUnspecified));
+  }
+
+  /**
+   * Returns true if the given raw {@link TypeMirror} (from an intersection type's underlying
+   * bounds) bears an explicit {@code @Nullable} annotation in the source code.
+   *
+   * <p>This checks the source-level type annotations on the {@link TypeMirror} directly, unlike
+   * CF's annotated types, which may have had nullness annotations propagated from other bounds in
+   * the same intersection type (see {@code AnnotatedIntersectionType.copyIntersectionBoundAnnotations}).
+   *
+   * <p>The raw {@link TypeMirror} carries the original source annotation (e.g.,
+   * {@code @org.jspecify.annotations.Nullable}), not CF's internal alias. So we check both
+   * CF's internal {@code unionNull} annotation and all recognized nullable annotation names.
+   */
+  private boolean hasExplicitNullableAnnotation(TypeMirror rawType) {
+    for (AnnotationMirror am : rawType.getAnnotationMirrors()) {
+      if (areSame(am, unionNull)) {
+        return true;
+      }
+      String qualifiedName =
+          ((TypeElement) am.getAnnotationType().asElement()).getQualifiedName().toString();
+      if (NULLABLE_ANNOTATIONS.contains(qualifiedName)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Returns true if the given raw {@link TypeMirror} is an unannotated {@code java.lang.Object}
+   * bound that should be skipped when evaluating the nullness of an intersection type.
+   *
+   * <p>When a type variable has only interface bounds (e.g., {@code T extends A & B}), javac
+   * implicitly inserts {@code java.lang.Object} as the first element of the
+   * {@link IntersectionType}'s bound list. This implicit bound carries no source-level nullness
+   * intent, so it must be excluded from the checks in {@link #isNullInclusiveUnderEveryParameterization}
+   * and {@link #nullnessEstablishingPathExists}. Without this exclusion, an unannotated Object
+   * bound would be mistakenly treated as a non-null bound, causing {@code T extends @Nullable A &
+   * @Nullable B} to be considered non-null (incorrect).
+   */
+  private boolean isUnannotatedObjectBound(TypeMirror rawType) {
+    if (rawType.getKind() != DECLARED) {
+      return false;
+    }
+    if (!rawType.getAnnotationMirrors().isEmpty()) {
+      return false;
+    }
+    TypeElement typeElement = (TypeElement) ((DeclaredType) rawType).asElement();
+    return typeElement.getQualifiedName().contentEquals("java.lang.Object");
   }
 
   private final class NullSpecEqualityComparer extends StructuralEqualityComparer {
