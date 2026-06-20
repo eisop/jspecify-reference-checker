@@ -28,6 +28,7 @@ import static org.checkerframework.javacutil.AnnotationUtils.areSame;
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
+import static org.checkerframework.javacutil.TreeUtils.isClassLiteral;
 import static org.checkerframework.javacutil.TreeUtils.typeOf;
 
 import com.sun.source.tree.EnhancedForLoopTree;
@@ -723,11 +724,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
   private boolean isOnClassLiteral(MethodInvocationNode node) {
     Node receiver = node.getTarget().getReceiver();
-    if (!(receiver instanceof FieldAccessNode)) {
-      return false;
-    }
-    FieldAccessNode fieldAccess = (FieldAccessNode) receiver;
-    return fieldAccess.getFieldName().equals("class");
+    return isClassLiteral(receiver.getTree());
   }
 
   private boolean isGetClassLoaderClassOnThisGetClass(MethodInvocationNode node) {
