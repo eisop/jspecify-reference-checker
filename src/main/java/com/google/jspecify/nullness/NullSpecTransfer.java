@@ -93,59 +93,71 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
   }
 
   @Override
+  public TransferResult<CFValue, NullSpecStore> visitNode(
+      Node node, TransferInput<CFValue, NullSpecStore> input) {
+    TransferResult<CFValue, NullSpecStore> result = super.visitNode(node, input);
+    if (isClassLiteral(node.getTree())) {
+      handleClassLiteral(result);
+    }
+    return result;
+  }
+
+  @Override
   public TransferResult<CFValue, NullSpecStore> visitFieldAccess(
       FieldAccessNode node, TransferInput<CFValue, NullSpecStore> input) {
     TransferResult<CFValue, NullSpecStore> result = super.visitFieldAccess(node, input);
     if (node.getFieldName().equals("class")) {
-      /*
-       * TODO(cpovirk): Move our "non-dataflow" special cases out of NullSpecTransfer and into our
-       * TreeAnnotator.
-       *
-       * *Or*: Would an even *better* option be to override a method like fromElement or
-       * getAnnotatedType? While methods like TreeAnnotator.visitMethodInvocation handle specific
-       * kinds of usages (like, well, "method invocations"), a method like fromElement or
-       * getAnnotatedType could handle all kinds of usages (including method references). Or maybe
-       * that's bad: When we analyze a method implementation in com.google.common itself, we
-       * probably don't want the checker to ignore the annotations that we've written on, e.g., its
-       * return type in favor of the "pretend" annotations that we apply for users here. On top of
-       * all that, another potentially tricky bit is to ensure that we have access to all the
-       * information we need. In particular, we sometimes need a Tree, not just an Element, such as
-       * when we look for calls to Throwable.getCause() that happens specifically on an instance of
-       * ExecutionException.
-       *
-       * *Or*: Would we prefer to just define stub files, since we're essentially recreating them
-       * here? However, we've seen slowness from using -Astubs (perhaps solvable by building the
-       * stub files into the Checker Framework itself, similar to the JDK stubs), *and* we've seen
-       * crashes (at least with our custom checker) when we analyze a codebase that we supply stubs
-       * for. Even if that doesn't work, though, maybe we should look to hook into CF in similar
-       * places to where the stub-file logic appears?
-       *
-       * Anyway, TreeAnnotator (or any other approach discussed above) offers advantages over
-       * NullSpecTransfer:
-       *
-       * - It runs in cases in which NullSpecTransfer (somewhat mysteriously) does not. See
-       *   https://github.com/jspecify/jspecify/blob/ef834e47eb83cdf3fb912d07705aa40808584a6a/samples/GetCauseNonNull.java#L46
-       *
-       * - TreeAnnotator lets us change the nullness of a _non-top-level_ type. Currently, we do
-       *   this to change the element type of a Stream when we know that it is non-nullable. (Aside:
-       *   Another piece of that logic -- well, a somewhat different piece of logic with a similar
-       *   purpose -- lives in checkMethodReferenceAsOverride. So that logic is already split across
-       *   files.)
-       *
-       * - I haven't measured performance, but I would assume that anything that runs during
-       *   dataflow is not going to be *faster* :) Perhaps more importantly, if we ever try to
-       *   improve performance by skipping dataflow in cases in which we can prove what we need
-       *   without it (as NullAway does), then we'll want to move our handling for as many simple
-       *   cases as we can to run it outside of dataflow.
-       *
-       * - Hypothetically, TreeAnnotator would make more sense if we needed to change types that
-       *   appear in "non-dataflow" locations -- perhaps if we needed to change the types of a
-       *   method's parameters or return type before overload checking occurs? But I don't know that
-       *   we'll need to do that.
-       */
-      setResultValueToNonNull(result);
+      handleClassLiteral(result);
     }
     return result;
+  }
+
+  private void handleClassLiteral(TransferResult<CFValue, NullSpecStore> result) {
+    /*
+     * TODO(cpovirk): Move our "non-dataflow" special cases out of NullSpecTransfer and into our
+     * TreeAnnotator.
+     *
+     * *Or*: Would an even *better* option be to override a method like fromElement or
+     * getAnnotatedType? While methods like TreeAnnotator.visitMethodInvocation handle specific
+     * kinds of usages (like, well, "method invocations"), a method like fromElement or
+     * getAnnotatedType could handle all kinds of usages (including method references). Or maybe
+     * that's bad: When we analyze a method implementation in com.google.common itself, we probably
+     * don't want the checker to ignore the annotations that we've written on, e.g., its return type
+     * in favor of the "pretend" annotations that we apply for users here. On top of all that,
+     * another potentially tricky bit is to ensure that we have access to all the information we
+     * need. In particular, we sometimes need a Tree, not just an Element, such as when we look for
+     * calls to Throwable.getCause() that happens specifically on an instance of ExecutionException.
+     *
+     * *Or*: Would we prefer to just define stub files, since we're essentially recreating them here?
+     * However, we've seen slowness from using -Astubs (perhaps solvable by building the stub files
+     * into the Checker Framework itself, similar to the JDK stubs), *and* we've seen crashes (at
+     * least with our custom checker) when we analyze a codebase that we supply stubs for. Even if
+     * that doesn't work, though, maybe we should look to hook into CF in similar places to where the
+     * stub-file logic appears?
+     *
+     * Anyway, TreeAnnotator (or any other approach discussed above) offers advantages over
+     * NullSpecTransfer:
+     *
+     * - It runs in cases in which NullSpecTransfer (somewhat mysteriously) does not. See
+     *   https://github.com/jspecify/jspecify/blob/ef834e47eb83cdf3fb912d07705aa40808584a6a/samples/GetCauseNonNull.java#L46
+     *
+     * - TreeAnnotator lets us change the nullness of a _non-top-level_ type. Currently, we do this
+     *   to change the element type of a Stream when we know that it is non-nullable. (Aside: Another
+     *   piece of that logic -- well, a somewhat different piece of logic with a similar purpose --
+     *   lives in checkMethodReferenceAsOverride. So that logic is already split across files.)
+     *
+     * - I haven't measured performance, but I would assume that anything that runs during dataflow
+     *   is not going to be *faster* :) Perhaps more importantly, if we ever try to improve
+     *   performance by skipping dataflow in cases in which we can prove what we need without it (as
+     *   NullAway does), then we'll want to move our handling for as many simple cases as we can to
+     *   run it outside of dataflow.
+     *
+     * - Hypothetically, TreeAnnotator would make more sense if we needed to change types that appear
+     *   in "non-dataflow" locations -- perhaps if we needed to change the types of a method's
+     *   parameters or return type before overload checking occurs? But I don't know that we'll need
+     *   to do that.
+     */
+    setResultValueToNonNull(result);
   }
 
   @Override
