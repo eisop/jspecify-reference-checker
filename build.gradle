@@ -58,8 +58,12 @@ ext {
     // null if not included with `--include-build path/to/jspecify`
     jspecify = gradle.includedBuilds.find { it.name == 'jspecify' }
 
-    // Location of the jspecify/jdk clone, relative to this directory
-    jspecifyJdkHome = '../jdk'
+    // Location of the jspecify/jdk clone, relative to this directory by default. Overridable
+    // (-PjspecifyJdkHome=/abs/path) so a caller building this alongside checker-framework's own
+    // build -- which needs its own, different annotated JDK at the same conventional sibling
+    // location -- can point this at a separate clone instead. See checker-framework's
+    // checker/bin-devel/test-jspecify-reference-checker.sh for a caller that uses this.
+    jspecifyJdkHome = project.findProperty('jspecifyJdkHome') ?: '../jdk'
 
     errorproneSupportsCurrentJdk = Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
 }
