@@ -66,6 +66,22 @@ ext {
     jspecifyJdkHome = project.findProperty('jspecifyJdkHome') ?: '../jdk'
 
     errorproneSupportsCurrentJdk = Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
+
+    javacModules = [
+        "api",
+        "code",
+        "comp",
+        "file",
+        "main",
+        "model",
+        "parser",
+        "processing",
+        "resources",
+        "tree",
+        "util",
+    ]
+    javacExports = javacModules.collect { "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
+    javacOpens = javacModules.collect { "--add-opens=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
 }
 
 configurations {
@@ -149,21 +165,7 @@ tasks.withType(JavaCompile).configureEach {
     options.errorprone.disable("BadImport")
     options.errorprone.disable("VoidUsed")
 
-    options.compilerArgs.addAll(
-            [
-                "api",
-                "code",
-                "comp",
-                "file",
-                "main",
-                "model",
-                "parser",
-                "processing",
-                "resources",
-                "tree",
-                "util",
-            ]
-            .collect { "--add-exports=jdk.compiler/com.sun.tools.javac.$it=ALL-UNNAMED" })
+    options.compilerArgs.addAll(javacExports)
 }
 
 tasks.register('copyJSpecifyJDK', Copy) {
@@ -280,17 +282,7 @@ tasks.register('binaryStubDiffTest', JavaCompile) {
         '-proc:only',
     ]
     options.fork = true
-    options.forkOptions.jvmArgs += [
-        'api',
-        'code',
-        'comp',
-        'file',
-        'main',
-        'model',
-        'processing',
-        'tree',
-        'util',
-    ].collect { "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
+    options.forkOptions.jvmArgs += javacExports
 }
 
 
@@ -300,16 +292,7 @@ tasks.withType(Test).configureEach {
     }
 
     // Required because checker-framework uses APIs from these modules.
-    jvmArgs(
-            [
-                "code",
-                "comp",
-                "main",
-                "processing",
-                "tree",
-                "util",
-            ]
-            .collect { "--add-opens=jdk.compiler/com.sun.tools.javac.$it=ALL-UNNAMED" })
+    jvmArgs(javacOpens)
 
     testLogging {
         showStackTraces = false
