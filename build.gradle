@@ -157,9 +157,16 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.register('copyJSpecifyJDK', Copy) {
     def srcDir = "${jspecifyJdkHome}/src"
-    // This directory needs to be stored at the top-level of the resulting .jar file.
+    // The annotated JDK is laid out as an "annotated-jdk" directory containing "src", and
+    // "annotated-jdk" needs to be stored at the top level of the resulting .jar file.
     // org.checkerframework.framework.stub.AnnotationFileElementTypes will then load
     // the JDK classes from here instead of from checker.jar.
+    //
+    // It loads them from the binary stub file that includeJSpecifyJDK generates, rather than by
+    // parsing the sources under "src". That file belongs at the root of the annotated JDK, as
+    // "annotated-jdk/annotated-jdk.bin.gz" -- a sibling of "src", the layout checker.jar itself
+    // uses, and where AnnotationFileElementTypes looks for it. It is not part of the JDK sources,
+    // so it does not belong under "src"; see includeJSpecifyJDK, which writes it.
     def dstDir = "${buildDir}/generated/resources/annotated-jdk/src/"
 
     inputs.dir file(srcDir)
@@ -195,11 +202,15 @@ tasks.register('includeJSpecifyJDK', JavaExec)  {
     }
     dependsOn 'copyJSpecifyJDK'
 
+    // Give JavaStubifier the root of the annotated JDK, not the "src" directory below it that
+    // copyJSpecifyJDK fills in: JavaStubifier minimizes every .java file under the directory it is
+    // given (so the JDK sources under "src" are still minimized), and writes the binary stub file
+    // into that same directory, which is where it belongs.
     // See comment in copyJSpecifyJDK.
-    def dstDir = "${buildDir}/generated/resources/annotated-jdk/src/"
+    def jdkRootDir = "${buildDir}/generated/resources/annotated-jdk"
 
-    inputs.dir file(dstDir)
-    outputs.dir file(dstDir)
+    inputs.dir file(jdkRootDir)
+    outputs.dir file(jdkRootDir)
 
     // We only need the CF on the classpath.
     classpath = configurations.checkerFrameworkRuntimeClasspath
@@ -208,7 +219,7 @@ tasks.register('includeJSpecifyJDK', JavaExec)  {
     errorOutput = System.err
 
     mainClass = 'org.checkerframework.framework.stubifier.JavaStubifier'
-    args dstDir
+    args jdkRootDir
 }
 
 processResources.dependsOn(includeJSpecifyJDK)
