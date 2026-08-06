@@ -185,7 +185,9 @@ tasks.register('copyJSpecifyJDK', Copy) {
         }
     }
     String absoluteSrcDir = file(srcDir).absolutePath
-    int srcPrefixSize = absoluteSrcDir.size()
+    // +1 to strip the leading file separator from the relative path,
+    // so Gradle's include pattern matching works correctly.
+    int srcPrefixSize = absoluteSrcDir.size() + 1
 
     from(srcDir)
     into(dstDir)
