@@ -1,4 +1,5 @@
 # 99 pass; 18 fail; 117 total; 84.6% score
+# (Note: The total includes 'not_enough_information' assertions, which pass silently and are not printed.)
 PASS: Basic.java:28:test:expression-type:Object?:nullable
 PASS: Basic.java:28:test:sink-type:Object!:return
 PASS: Basic.java:28:test:cannot-convert:Object? to Object!
