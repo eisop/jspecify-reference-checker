@@ -15,6 +15,7 @@
 package com.google.jspecify.nullness;
 
 import com.sun.source.tree.ParameterizedTypeTree;
+import java.util.List;
 import javax.lang.model.element.AnnotationMirror;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeValidator;
@@ -52,19 +53,21 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
       AnnotatedDeclaredType type, AnnotatedDeclaredType capturedType, ParameterizedTypeTree tree) {
     // JSpecify's subtyping rules break reflexivity in strict mode for NullnessUnspecified vs
     // NullnessUnspecified to enforce "least convenient world" checking. This causes the captured
-    // wildcard validation check in BaseTypeValidator to spuriously fail when both bounds are
+    // wildcard validation check in BaseTypeValidator (which checks
+    // `isSubtype(capturedUpperBound, wildcard.getExtendsBound())`) to spuriously fail when both are
     // NullnessUnspecified. As explicitly permitted by BaseTypeValidator's documentation, we bypass
     // this check in that case.
-    for (int i = 0; i < type.getTypeArguments().size(); i++) {
-      if (!(type.getTypeArguments().get(i) instanceof AnnotatedWildcardType)) {
+    List<? extends AnnotatedTypeMirror> typeArgs = type.getTypeArguments();
+    List<? extends AnnotatedTypeMirror> capturedArgs = capturedType.getTypeArguments();
+    for (int i = 0; i < typeArgs.size(); i++) {
+      if (!(typeArgs.get(i) instanceof AnnotatedWildcardType)) {
         continue;
       }
-      AnnotatedWildcardType wildcard = (AnnotatedWildcardType) type.getTypeArguments().get(i);
-      if (!(capturedType.getTypeArguments().get(i) instanceof AnnotatedTypeVariable)) {
+      AnnotatedWildcardType wildcard = (AnnotatedWildcardType) typeArgs.get(i);
+      if (!(capturedArgs.get(i) instanceof AnnotatedTypeVariable)) {
         continue;
       }
-      AnnotatedTypeVariable capturedVar =
-          (AnnotatedTypeVariable) capturedType.getTypeArguments().get(i);
+      AnnotatedTypeVariable capturedVar = (AnnotatedTypeVariable) capturedArgs.get(i);
       if (wildcard.getExtendsBound().hasAnnotation(nullnessOperatorUnspecified)
           && capturedVar.getUpperBound().hasAnnotation(nullnessOperatorUnspecified)) {
         return;
