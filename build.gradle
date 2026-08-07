@@ -66,6 +66,22 @@ ext {
     jspecifyJdkHome = project.findProperty('jspecifyJdkHome') ?: '../jdk'
 
     errorproneSupportsCurrentJdk = Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
+
+    javacModules = [
+        "api",
+        "code",
+        "comp",
+        "file",
+        "main",
+        "model",
+        "parser",
+        "processing",
+        "resources",
+        "tree",
+        "util",
+    ]
+    javacExports = javacModules.collect { "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
+    javacOpens = javacModules.collect { "--add-opens=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
 }
 
 configurations {
@@ -115,6 +131,17 @@ configurations {
         canBeConsumed = false
         extendsFrom implementation
     }
+
+    // BinaryStubDiffChecker, for the binaryStubDiffTest task below. It is in checker-framework's
+    // framework-test artifact, which is not otherwise needed on this project's own classpaths.
+    binaryStubDiffChecker {
+        canBeResolved = true
+        canBeConsumed = false
+    }
+}
+
+dependencies {
+    binaryStubDiffChecker libs.checkerFramework.framework.test
 }
 
 // If built with `--include-build path/to/checker-framework` then
@@ -138,21 +165,7 @@ tasks.withType(JavaCompile).configureEach {
     options.errorprone.disable("BadImport")
     options.errorprone.disable("VoidUsed")
 
-    options.compilerArgs.addAll(
-            [
-                "api",
-                "code",
-                "comp",
-                "file",
-                "main",
-                "model",
-                "parser",
-                "processing",
-                "resources",
-                "tree",
-                "util",
-            ]
-            .collect { "--add-exports=jdk.compiler/com.sun.tools.javac.$it=ALL-UNNAMED" })
+    options.compilerArgs.addAll(javacExports)
 }
 
 tasks.register('copyJSpecifyJDK', Copy) {
@@ -226,22 +239,62 @@ tasks.register('includeJSpecifyJDK', JavaExec)  {
 
 processResources.dependsOn(includeJSpecifyJDK)
 
+// Checks that reading this project's annotated JDK from its binary stub file produces exactly the
+// annotations that parsing the JDK sources produces. The Checker Framework generates the binary
+// stub file at build time (see includeJSpecifyJDK) and reads it in preference to the sources, so a
+// disagreement between the two would silently change what the checker sees.
+//
+// The check runs while the checker initializes, over every class in the binary stub file, so what
+// is compiled here does not matter; TriggerBinaryStubDiff.java exists only to make the checker run.
+// BinaryStubDiffChecker implements it and ships in checker-framework's framework-test artifact.
+tasks.register('binaryStubDiffTest', JavaCompile) {
+    description = 'Check that the annotated JDK\'s binary stub file agrees with its sources.'
+    group = 'verification'
+    dependsOn 'jar'
+
+    source = files("${projectDir}/tests/binary-stub-diff/TriggerBinaryStubDiff.java")
+    destinationDirectory = layout.buildDirectory.dir('binaryStubDiff')
+
+    // The checker's own qualifiers (com.google.jspecify.nullness.*) must be on the compilation
+    // classpath, not merely the annotation-processor path: AnnotationBuilder resolves them through
+    // Elements.getTypeElement, which reads the compilation classpath.
+    classpath = files(tasks.jar.archiveFile) + configurations.runtimeClasspath
+
+    // The checker itself, its annotated JDK (in the jar built above), and BinaryStubDiffChecker.
+    options.annotationProcessorPath =
+            files(tasks.jar.archiveFile) +
+            configurations.runtimeClasspath +
+            configurations.binaryStubDiffChecker
+
+    // The Error Prone plugin decorates every JavaCompile task; this one runs only the checker.
+    options.errorprone.enabled = false
+
+    // Compile against the running JDK, not this project's sourceCompatibility. The check compares
+    // what the binary stub file and the JDK sources say about JDK elements, and the text parser
+    // resolves those elements against the compilation's JDK: under an older --release, an element
+    // that JDK does not have resolves to nothing, and its annotations look like they are "only in
+    // binary" when in truth neither side was ever asked about them.
+    sourceCompatibility = JavaVersion.current().majorVersion
+    targetCompatibility = JavaVersion.current().majorVersion
+
+    options.compilerArgs += [
+        '-processor',
+        'com.google.jspecify.nullness.NullSpecChecker',
+        '-AbinaryStubDiffCheck',
+        '-proc:only',
+    ]
+    options.fork = true
+    options.forkOptions.jvmArgs += javacExports
+}
+
+
 tasks.withType(Test).configureEach {
     if (!JavaVersion.current().java9Compatible) {
         jvmArgs "-Xbootclasspath/p:${configurations.errorproneJavac.asPath}"
     }
 
     // Required because checker-framework uses APIs from these modules.
-    jvmArgs(
-            [
-                "code",
-                "comp",
-                "main",
-                "processing",
-                "tree",
-                "util",
-            ]
-            .collect { "--add-opens=jdk.compiler/com.sun.tools.javac.$it=ALL-UNNAMED" })
+    jvmArgs(javacOpens)
 
     testLogging {
         showStackTraces = false
