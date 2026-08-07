@@ -19,11 +19,11 @@ jobs:
         java_version: [17, 21, 25]
     steps:
       - name: Check out jspecify-reference checker
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: jspecify-reference-checker
       - name: Check out jspecify
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: jspecify/jspecify
           path: jspecify
@@ -33,13 +33,13 @@ jobs:
       # I am not sure what the best setup is - at this point initialize-project
       # does not do anything useful.
       - name: Check out jspecify/jdk
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: jspecify/jdk
           path: jdk
       # Clone the EISOP CF if necessary:
       - name: Check out eisop/checker-framework
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         if: ${{ env.EISOP_RELEASE != 'true' }}
         with:
           repository: eisop/checker-framework
@@ -89,7 +89,7 @@ jobs:
     if: github.repository == 'jspecify/jspecify-reference-checker' && github.ref_name == 'main' && github.event_name == 'push'
     steps:
     - name: Check out the code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
     - name: Set up Java
       uses: actions/setup-java@v5
       with:
