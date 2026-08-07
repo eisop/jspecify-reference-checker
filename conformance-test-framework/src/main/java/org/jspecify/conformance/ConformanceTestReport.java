@@ -73,6 +73,8 @@ public final class ConformanceTestReport {
     report.format(
         "# %,d pass; %,d fail; %,d total; %.1f%% score%n",
         passes, fails, total, 100.0 * passes / total);
+    report.format(
+        "# (Note: The total includes 'not_enough_information' assertions, which pass silently and are not printed.)%n");
     for (Path file : files) {
       ImmutableListMultimap<Long, ExpectedFact> expectedFactsInFile =
           index(expectedFactsByFile.get(file), Fact::getLineNumber);
@@ -84,6 +86,7 @@ public final class ConformanceTestReport {
         // Report all expected facts on this line and whether they're reported or not.
         expectedFactsInFile.get(lineNumber).stream()
             .sorted(comparingLong(ExpectedFact::getFactLineNumber))
+            .filter(not(ExpectedFact::isNullnessNotEnoughInformation))
             .forEach(
                 expectedFact ->
                     writeFact(
@@ -108,7 +111,10 @@ public final class ConformanceTestReport {
   }
 
   private long getFails() {
-    return expectedFactsByFile.values().stream().filter(not(this::matchesReportedFact)).count()
+    return expectedFactsByFile.values().stream()
+            .filter(not(ExpectedFact::isNullnessNotEnoughInformation))
+            .filter(not(this::matchesReportedFact))
+            .count()
         + files.stream().map(reportedFactsByFile::get).filter(this::hasUnexpectedFacts).count();
   }
 

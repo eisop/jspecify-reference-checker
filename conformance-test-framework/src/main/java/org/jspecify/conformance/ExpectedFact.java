@@ -44,9 +44,13 @@ public final class ExpectedFact extends Fact {
   private static final Pattern NULLNESS_MISMATCH =
       Pattern.compile("jspecify_nullness_mismatch\\b.*");
 
+  private static final Pattern NULLNESS_NOT_ENOUGH_INFORMATION =
+      Pattern.compile("jspecify_nullness_not_enough_information\\b.*");
+
   private static final ImmutableList<Pattern> FACT_PATTERNS =
       ImmutableList.of(
           NULLNESS_MISMATCH,
+          NULLNESS_NOT_ENOUGH_INFORMATION,
           // TODO: wildcard types have whitespace
           Pattern.compile("test:cannot-convert:\\S+ to \\S+"),
           Pattern.compile("test:expression-type:[^:]+:.*"),
@@ -70,6 +74,14 @@ public final class ExpectedFact extends Fact {
    */
   public boolean isNullnessMismatch() {
     return NULLNESS_MISMATCH.matcher(getFactText()).matches();
+  }
+
+  /**
+   * Returns {@code true} if {@code fact} is a {@code jspecify_nullness_not_enough_information}
+   * assertion.
+   */
+  public boolean isNullnessNotEnoughInformation() {
+    return NULLNESS_NOT_ENOUGH_INFORMATION.matcher(getFactText()).matches();
   }
 
   @Override
