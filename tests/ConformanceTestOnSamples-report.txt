@@ -1,4 +1,4 @@
-# 740 pass; 495 fail; 1,235 total; 59.9% score
+# 741 pass; 494 fail; 1,235 total; 60.0% score
 # (Note: The total includes 'not_enough_information' assertions, which pass silently and are not printed.)
 FAIL: AnnotatedInnerOfNonParameterized.java: no unexpected facts
 FAIL: AnnotatedInnerOfParameterized.java: no unexpected facts
@@ -304,7 +304,7 @@ FAIL: NullLiteralToTypeVariableUnionNull.java: no unexpected facts
 FAIL: NullLiteralToTypeVariableUnspec.java: no unexpected facts
 FAIL: NullMarkedDirectUseOfNotNullMarkedBoundedTypeVariable.java: no unexpected facts
 PASS: NullUnmarkedUndoesNullMarked.java: no unexpected facts
-FAIL: NullUnmarkedUndoesNullMarkedForWildcards.java: no unexpected facts
+PASS: NullUnmarkedUndoesNullMarkedForWildcards.java: no unexpected facts
 PASS: NullnessDoesNotAffectOverloadSelection.java:23:jspecify_nullness_mismatch
 PASS: NullnessDoesNotAffectOverloadSelection.java: no unexpected facts
 PASS: ObjectAsSuperOfTypeVariable.java:35:jspecify_nullness_mismatch
