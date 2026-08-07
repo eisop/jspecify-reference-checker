@@ -53,7 +53,9 @@ nexusPublishing {
 
 ext {
     // null if not included with `--include-build path/to/checker-framework`
-    checkerFramework = gradle.includedBuilds.find { it.name == 'checker-framework' }
+    checkerFramework = gradle.includedBuilds.find {
+        it.name == 'checker-framework'
+    }
 
     // null if not included with `--include-build path/to/jspecify`
     jspecify = gradle.includedBuilds.find { it.name == 'jspecify' }
@@ -80,8 +82,12 @@ ext {
         "tree",
         "util",
     ]
-    javacExports = javacModules.collect { "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
-    javacOpens = javacModules.collect { "--add-opens=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString() }
+    javacExports = javacModules.collect {
+        "--add-exports=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()
+    }
+    javacOpens = javacModules.collect {
+        "--add-opens=jdk.compiler/com.sun.tools.javac.${it}=ALL-UNNAMED".toString()
+    }
 }
 
 configurations {
@@ -209,7 +215,7 @@ tasks.register('copyJSpecifyJDK', Copy) {
     }
 }
 
-tasks.register('includeJSpecifyJDK', JavaExec)  {
+tasks.register('includeJSpecifyJDK', JavaExec) {
     group = 'Build'
 
     if (checkerFramework != null) {
@@ -362,7 +368,7 @@ tasks.register('conformanceTests', Test) {
         systemProperties([
             "JSpecifyConformanceTest.inputs": "${conformanceTests}/assertions/org/jspecify/conformance/tests",
             "JSpecifyConformanceTest.report": "tests/ConformanceTest-report.txt",
-            "JSpecifyConformanceTest.deps"  : depsList.join(":")
+            "JSpecifyConformanceTest.deps" : depsList.join(":")
         ])
     }
 
@@ -385,7 +391,7 @@ tasks.register('deleteTestsBuild') {
 }
 clean.dependsOn('deleteTestsBuild')
 
-tasks.register('demoTest', Exec)  {
+tasks.register('demoTest', Exec) {
     group = 'verification'
     shouldRunAfter 'conformanceTests'
     dependsOn assemble
