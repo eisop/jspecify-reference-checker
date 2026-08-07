@@ -14,10 +14,12 @@
 
 package com.google.jspecify.nullness;
 
+import com.sun.source.tree.ParameterizedTypeTree;
 import javax.lang.model.element.AnnotationMirror;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 
 final class NullSpecTypeValidator extends BaseTypeValidator {
   private final AnnotationMirror nullnessOperatorUnspecified;
@@ -41,5 +43,15 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
     } else {
       return super.areBoundsValid(upperBound, lowerBound);
     }
+  }
+
+  @Override
+  protected void checkCapturedWildcardBounds(
+      AnnotatedDeclaredType type, AnnotatedDeclaredType capturedType, ParameterizedTypeTree tree) {
+    // JSpecify's subtyping rules break reflexivity in strict mode for NullnessUnspecified vs
+    // NullnessUnspecified to enforce "least convenient world" checking.
+    // This causes the captured wildcard validation check in BaseTypeValidator
+    // (which checks `isSubtype(glb(bound, wildcard), wildcard)`) to spuriously fail.
+    // As explicitly permitted by BaseTypeValidator's documentation, we bypass this check here.
   }
 }
