@@ -1,4 +1,3 @@
-includeBuild "../checker-framework"
 // Project name is read-only in build scripts, and defaults to directory name.
 rootProject.name = "jspecify-reference-checker"
 include 'conformance-test-framework'
