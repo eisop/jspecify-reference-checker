@@ -14,10 +14,15 @@
 
 package com.google.jspecify.nullness;
 
+import com.sun.source.tree.ParameterizedTypeTree;
+import java.util.List;
 import javax.lang.model.element.AnnotationMirror;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedWildcardType;
 
 final class NullSpecTypeValidator extends BaseTypeValidator {
   private final AnnotationMirror nullnessOperatorUnspecified;
@@ -41,5 +46,33 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
     } else {
       return super.areBoundsValid(upperBound, lowerBound);
     }
+  }
+
+  @Override
+  protected void checkCapturedWildcardBounds(
+      AnnotatedDeclaredType type, AnnotatedDeclaredType capturedType, ParameterizedTypeTree tree) {
+    // JSpecify's subtyping rules break reflexivity in strict mode for NullnessUnspecified vs
+    // NullnessUnspecified to enforce "least convenient world" checking. This causes the captured
+    // wildcard validation check in BaseTypeValidator (which checks
+    // `isSubtype(capturedUpperBound, wildcard.getExtendsBound())`) to spuriously fail when both are
+    // NullnessUnspecified. As explicitly permitted by BaseTypeValidator's documentation, we bypass
+    // this check in that case.
+    List<? extends AnnotatedTypeMirror> typeArgs = type.getTypeArguments();
+    List<? extends AnnotatedTypeMirror> capturedArgs = capturedType.getTypeArguments();
+    for (int i = 0; i < typeArgs.size(); i++) {
+      if (!(typeArgs.get(i) instanceof AnnotatedWildcardType)) {
+        continue;
+      }
+      AnnotatedWildcardType wildcard = (AnnotatedWildcardType) typeArgs.get(i);
+      if (!(capturedArgs.get(i) instanceof AnnotatedTypeVariable)) {
+        continue;
+      }
+      AnnotatedTypeVariable capturedVar = (AnnotatedTypeVariable) capturedArgs.get(i);
+      if (wildcard.getExtendsBound().hasAnnotation(nullnessOperatorUnspecified)
+          && capturedVar.getUpperBound().hasAnnotation(nullnessOperatorUnspecified)) {
+        return;
+      }
+    }
+    super.checkCapturedWildcardBounds(type, capturedType, tree);
   }
 }
