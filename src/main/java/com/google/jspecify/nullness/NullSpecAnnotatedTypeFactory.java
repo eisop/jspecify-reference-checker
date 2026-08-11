@@ -942,7 +942,7 @@ final class NullSpecAnnotatedTypeFactory
   private final class NullSpecTypeVariableSubstitutor extends TypeVariableSubstitutor {
     @Override
     protected AnnotatedTypeMirror substituteTypeVariable(
-        AnnotatedTypeMirror argument, AnnotatedTypeVariable use) {
+        AnnotatedTypeMirror argument, AnnotatedTypeVariable use, boolean argumentIsInferred) {
       AnnotatedTypeMirror substitute = argument.deepCopy(/* copyAnnotations= */ true);
 
       /*
