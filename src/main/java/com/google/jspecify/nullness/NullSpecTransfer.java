@@ -711,7 +711,39 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       AnnotatedTypeMirror mapValueType = typeAsMap.getTypeArguments().get(1);
       mapValueAsDataflowValue =
           analysis.createAbstractValue(
-              mapValueType.getAnnotations(), mapValueType.getUnderlyingType());
+              dataflowAnnotationsForMapValue(mapValueType), mapValueType.getUnderlyingType());
+    }
+
+    /*
+     * The primary nullness operator(s) to attach to the dataflow value we infer for a `map.get(key)`
+     * call that we have refined (via a keySet loop or a preceding containsKey/put). The value we
+     * infer is the map's value type argument, and its dataflow value must carry that argument's own
+     * nullness as a primary annotation.
+     *
+     * Normally the argument already carries a primary annotation (e.g. `? extends Object` captures to
+     * a value type with a primary @MinusNull, `Object` value types carry their own operator), so we
+     * just use getAnnotations() as-is.
+     *
+     * The exception is the capture of an upper-bounded (or unbounded) *nullable* wildcard -- e.g.
+     * `Map<K, ? extends @Nullable Object>`. Such a capture has no primary annotation of its own; its
+     * definite nullability lives on its UNION_NULL upper bound, so getAnnotations() is empty and the
+     * dataflow value would understate the read as non-null, dropping the expected
+     * jspecify_nullness_mismatch (silently, under lenient mode). Per the spec's substitution rule,
+     * reading a value whose type is such a capture applies NO_CHANGE to a UNION_NULL type, which
+     * yields UNION_NULL. So we project the capture's UNION_NULL onto the dataflow value.
+     *
+     * This mirrors the analogous projection substituteTypeVariable performs for member reads of the
+     * same kind of capture (see NullSpecAnnotatedTypeFactory.isCaptureOfDefinitelyNullableExtends-
+     * Wildcard, including its guards against the two cases -- a `? extends V` capture and a `? super
+     * X` capture -- where the upper bound's UNION_NULL must not be smeared onto the read). The two
+     * cannot share a code path: this refinement builds the value directly from the value type
+     * argument, never going through type-variable substitution.
+     */
+    private AnnotationMirrorSet dataflowAnnotationsForMapValue(AnnotatedTypeMirror mapValueType) {
+      if (atypeFactory.isCaptureOfDefinitelyNullableExtendsWildcard(mapValueType)) {
+        return AnnotationMirrorSet.singleton(unionNull);
+      }
+      return mapValueType.getAnnotations();
     }
   }
 

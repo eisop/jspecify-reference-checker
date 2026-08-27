@@ -328,6 +328,9 @@ test {
 
     include '**/NullSpecTest$Regression.class'
     inputs.files("${rootDir}/tests/regression")
+
+    include '**/NullSpecTest$RegressionStrict.class'
+    inputs.files("${rootDir}/tests/regression-strict")
 }
 
 tasks.register('jspecifySamplesTest', Test) {

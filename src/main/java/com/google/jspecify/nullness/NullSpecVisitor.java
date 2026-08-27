@@ -832,24 +832,16 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
      * nullable or non-nullable value. In that case, we can skip the superclass's checks entirely.
      *
      * This all relies on the fact that CF can infer the return type as non-nullable in the first
-     * place. I had expected that to work in simple cases but fail in more complex ones. But I
-     * haven't seen if fail yet. If it does fail someday, we can probably patch some common cases up
-     * in our TreeAnnotator by making visitMethodInvocation check Stream.map calls to see if they
-     * fit the form filter(...).map(Foo.class::cast), where the filter is isInstance, x != null,
-     * etc. In that case, we can modify the Stream<...> return type to have a non-nullable element
-     * type. I hope.
+     * place. That does not happen on its own: this check runs only after type-argument inference,
+     * so for a call like `stream.map(Foo.class::cast)`, whose element type is exactly what
+     * inference is trying to determine, inference sees the declared `T?` return type and never
+     * gets far enough to reach this check. NullSpecAnnotatedTypeFactory
+     * .narrowClassCastReturnTypeIfArgumentIsNonNull applies the same reasoning as this method
+     * where the method reference's type is first computed, which is early enough for inference to
+     * benefit from it.
      */
-    return isClassCastAppliedToNonNullableType(tree)
+    return atypeFactory.isClassCastAppliedToNonNullableType(tree)
         || super.checkMethodReferenceAsOverride(tree, p);
-  }
-
-  private boolean isClassCastAppliedToNonNullableType(MemberReferenceTree tree) {
-    if (!nameMatches(tree, "Class", "cast")) {
-      return false;
-    }
-    AnnotatedExecutableType functionType = atypeFactory.getFunctionTypeFromTree(tree);
-    AnnotatedTypeMirror parameterType = functionType.getParameterTypes().get(0);
-    return atypeFactory.isNullExclusiveUnderEveryParameterization(parameterType);
   }
 
   @Override
