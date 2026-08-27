@@ -71,8 +71,7 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.Elements;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.common.basetype.TypeValidator;
@@ -81,6 +80,7 @@ import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclared
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
+import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
 
 final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory> {
@@ -91,6 +91,30 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     super(checker);
     this.util = util;
     checkImpl = checker.hasOption("checkImpl");
+  }
+
+  /**
+   * Returns whether any of {@code annotations} is one of this checker's three nullness annotations,
+   * as written directly in source.
+   *
+   * <p>Unlike almost all other logic in this checker, which operates on qualifiers' internal
+   * representation in an {@link AnnotatedTypeMirror}, this inspects the syntax tree directly. That
+   * distinction matters here specifically because our qualifiers are this checker's entire type
+   * system: every type variable's implicit lower bound and every wildcard's implicit super bound
+   * already carries one of them from ordinary defaulting, whether or not the user wrote anything at
+   * all. Only the tree can distinguish a real, explicit annotation from that default.
+   */
+  static boolean hasExplicitNullnessAnnotation(List<? extends AnnotationTree> annotations) {
+    for (AnnotationMirror annotation : annotationsFromTypeAnnotationTrees(annotations)) {
+      if (isNullnessAnnotation(annotation)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isNullnessAnnotation(AnnotationMirror annotation) {
+    return NULLNESS_ANNOTATIONS.contains(annotationName(annotation));
   }
 
   private void ensureNonNull(Tree tree) {
@@ -377,35 +401,13 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   private boolean overridesInitialValue(TypeElement clazz) {
     // ThreadLocal.initialValue() can be absent if we're running with j2cl's limited classpath.
-    return util.threadLocalInitialValueElement.isPresent()
-        && getAllDeclaredSupertypes(clazz.asType()).stream()
-            .flatMap(type -> type.asElement().getEnclosedElements().stream())
-            .filter(ExecutableElement.class::isInstance)
-            .map(ExecutableElement.class::cast)
-            .anyMatch(
-                e ->
-                    atypeFactory
-                        .getElementUtils()
-                        .overrides(e, util.threadLocalInitialValueElement.get(), clazz));
-  }
-
-  /**
-   * Returns all supertypes of the given type, including the type itself and any transitive
-   * supertypes. The returned list may contain duplicates.
-   */
-  private List<DeclaredType> getAllDeclaredSupertypes(TypeMirror type) {
-    List<DeclaredType> result = new ArrayList<>();
-    collectAllDeclaredSupertypes(type, result);
-    return result;
-  }
-
-  private void collectAllDeclaredSupertypes(TypeMirror type, List<DeclaredType> result) {
-    if (type instanceof DeclaredType) {
-      result.add((DeclaredType) type);
+    if (!util.threadLocalInitialValueElement.isPresent()) {
+      return false;
     }
-    for (TypeMirror supertype : types.directSupertypes(type)) {
-      collectAllDeclaredSupertypes(supertype, result);
-    }
+    ExecutableElement initialValue = util.threadLocalInitialValueElement.get();
+    Elements elements = atypeFactory.getElementUtils();
+    return ElementUtils.getAllMethodsIn(clazz, elements).stream()
+        .anyMatch(method -> elements.overrides(method, initialValue, clazz));
   }
 
   /*
