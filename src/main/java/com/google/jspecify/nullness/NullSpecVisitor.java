@@ -859,4 +859,83 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   protected TypeValidator createTypeValidator() {
     return new NullSpecTypeValidator(checker, this, atypeFactory, ((NullSpecChecker) checker).util);
   }
+
+  /**
+   * Returns an {@link OverrideChecker} that additionally requires each overriding parameter type to
+   * be a subtype of the corresponding overridden parameter type -- not merely a supertype, as the
+   * superclass's ordinary contravariant check requires. JSpecify's override rule is invariance: a
+   * parameter may neither be widened (the superclass's own direction) nor narrowed.
+   *
+   * <p>A generic method's own type-parameter bound (narrower or wider than the corresponding type
+   * parameter's bound on the method it overrides) needs no override-checker rule of its own: the
+   * superclass's {@code isTypeParameterBoundOverrideValid} default is sound by construction for any
+   * checker whose {@link #typeHierarchy} implements {@code isSubtype} meaningfully, which this
+   * checker's does, so the inherited default already reports {@code override.typaram.invalid}
+   * correctly. It may report that alongside the ordinary parameter/return diagnostic below for a
+   * bare or nested occurrence of the same type parameter; that overlap is accepted, documented
+   * behavior (see checker-framework's {@code checker/tests/nullness/OverrideTypeParamBound.java}),
+   * not a defect to deduplicate around.
+   */
+  @Override
+  protected OverrideChecker createOverrideChecker(
+      Tree overriderTree,
+      AnnotatedExecutableType overrider,
+      AnnotatedTypeMirror overriderType,
+      AnnotatedTypeMirror overriderReturnType,
+      AnnotatedExecutableType overridden,
+      AnnotatedDeclaredType overriddenType,
+      AnnotatedTypeMirror overriddenReturnType) {
+    return new InvariantParameterOverrideChecker(
+        overriderTree,
+        overrider,
+        overriderType,
+        overriderReturnType,
+        overridden,
+        overriddenType,
+        overriddenReturnType);
+  }
+
+  /**
+   * Adds the narrowing-direction half of parameter invariance on top of {@link
+   * OverrideChecker#isParameterOverrideValid}'s ordinary widening-direction (contravariant) check.
+   * Skipped for method references: JSpecify's invariance rule is about a method's own declared
+   * parameter types, and a method reference has none of its own to compare -- {@link
+   * NullSpecAnnotatedTypeFactory#isClassCastAppliedToNonNullableType} already handles the one
+   * method reference pattern (Class::cast) this checker gives special treatment.
+   */
+  private final class InvariantParameterOverrideChecker extends OverrideChecker {
+    InvariantParameterOverrideChecker(
+        Tree overriderTree,
+        AnnotatedExecutableType overrider,
+        AnnotatedTypeMirror overriderType,
+        AnnotatedTypeMirror overriderReturnType,
+        AnnotatedExecutableType overridden,
+        AnnotatedDeclaredType overriddenType,
+        AnnotatedTypeMirror overriddenReturnType) {
+      super(
+          overriderTree,
+          overrider,
+          overriderType,
+          overriderReturnType,
+          overridden,
+          overriddenType,
+          overriddenReturnType);
+    }
+
+    @Override
+    protected boolean isParameterOverrideValid(
+        AnnotatedTypeMirror capturedOverriddenParam,
+        AnnotatedTypeMirror overriddenParam,
+        AnnotatedTypeMirror overriderParam) {
+      if (!super.isParameterOverrideValid(
+          capturedOverriddenParam, overriddenParam, overriderParam)) {
+        return false;
+      }
+      if (isMethodReference) {
+        return true;
+      }
+      return typeHierarchy.isSubtype(overriderParam, capturedOverriddenParam)
+          || testTypevarContainment(overriderParam, overriddenParam);
+    }
+  }
 }
