@@ -47,10 +47,28 @@ public final class ExpectedFact extends Fact {
   private static final Pattern NULLNESS_NOT_ENOUGH_INFORMATION =
       Pattern.compile("jspecify_nullness_not_enough_information\\b.*");
 
+  // The following three assertions, documented in samples/README.md's "Syntax" section, mark
+  // places where a JSpecify annotation is applied in a way the spec gives no meaning to. Per that
+  // same README, tools are "likely" (or, for the unrecognized-location case, "somewhat less
+  // likely") to report an error there but are "not obligated to do anything" -- the same
+  // not-obligatory wording used for NULLNESS_NOT_ENOUGH_INFORMATION above. So they get the same
+  // lenient treatment: see isOptionalErrorAssertion.
+  private static final Pattern NULLNESS_CONFLICTING_ANNOTATIONS =
+      Pattern.compile("jspecify_conflicting_annotations\\b.*");
+
+  private static final Pattern NULLNESS_INTRINSICALLY_NOT_NULLABLE =
+      Pattern.compile("jspecify_nullness_intrinsically_not_nullable\\b.*");
+
+  private static final Pattern NULLNESS_UNRECOGNIZED_LOCATION =
+      Pattern.compile("jspecify_unrecognized_location\\b.*");
+
   private static final ImmutableList<Pattern> FACT_PATTERNS =
       ImmutableList.of(
           NULLNESS_MISMATCH,
           NULLNESS_NOT_ENOUGH_INFORMATION,
+          NULLNESS_CONFLICTING_ANNOTATIONS,
+          NULLNESS_INTRINSICALLY_NOT_NULLABLE,
+          NULLNESS_UNRECOGNIZED_LOCATION,
           // TODO: wildcard types have whitespace
           Pattern.compile("test:cannot-convert:\\S+ to \\S+"),
           Pattern.compile("test:expression-type:[^:]+:.*"),
@@ -84,9 +102,35 @@ public final class ExpectedFact extends Fact {
     return NULLNESS_NOT_ENOUGH_INFORMATION.matcher(getFactText()).matches();
   }
 
+  /**
+   * Returns {@code true} if {@code fact} is one of the assertions for which, per samples/README.md,
+   * tools are "not obligated to do anything": {@code jspecify_nullness_not_enough_information} or
+   * one of the three "unrecognized annotation location" assertions ({@code
+   * jspecify_conflicting_annotations}, {@code jspecify_nullness_intrinsically_not_nullable}, {@code
+   * jspecify_unrecognized_location}). Unlike {@code jspecify_nullness_mismatch}, a tool reporting
+   * (or not reporting) an error here is never wrong.
+   */
+  public boolean isOptionalErrorAssertion() {
+    String factText = getFactText();
+    return NULLNESS_NOT_ENOUGH_INFORMATION.matcher(factText).matches()
+        || NULLNESS_CONFLICTING_ANNOTATIONS.matcher(factText).matches()
+        || NULLNESS_INTRINSICALLY_NOT_NULLABLE.matcher(factText).matches()
+        || NULLNESS_UNRECOGNIZED_LOCATION.matcher(factText).matches();
+  }
+
   @Override
   protected String getFactText() {
     return factText;
+  }
+
+  /**
+   * Returns {@code true} if this expected fact's text is exactly {@code text}. This lets a {@link
+   * ReportedFact} outside this package check for a match against specific, computed candidate texts
+   * (e.g. when one diagnostic can independently satisfy several different expected facts), without
+   * exposing {@link #getFactText()} itself outside the package.
+   */
+  public boolean hasFactText(String text) {
+    return factText.equals(text);
   }
 
   /** Returns the line number in the input file where the expected fact is. */

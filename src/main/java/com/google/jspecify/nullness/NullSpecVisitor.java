@@ -26,6 +26,7 @@ import static javax.lang.model.element.ElementKind.PACKAGE;
 import static org.checkerframework.framework.util.AnnotatedTypes.asSuper;
 import static org.checkerframework.javacutil.AnnotationUtils.annotationName;
 import static org.checkerframework.javacutil.AnnotationUtils.areSameByName;
+import static org.checkerframework.javacutil.TreeUtils.annotationFromAnnotationTree;
 import static org.checkerframework.javacutil.TreeUtils.annotationsFromTypeAnnotationTrees;
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
@@ -67,6 +68,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
+import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.common.basetype.TypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
@@ -246,30 +248,17 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
      *
      * In this case, we already know that we have some kind of member select, and so we want to look
      * for annotations on the "left side" of the select (if that side turns out to be a type rather
-     * than, say, an instance, like in `foo.bar()`). But to do so, we need to figure out which
-     * specific tree they would be on. If the expression tree is an annotated type, we look there.
-     * But if it's a parameterized type like `Foo<Bar>`, we have to pull off the `Foo` part, as
-     * that's where the parse tree attaches the annotations.
+     * than, say, an instance, like in `foo.bar()`).
      *
      * I would not be at all surprised if there are additional cases that we still haven't covered.
+     *
+     * In all cases in which we report outer.annotated, we know that we're dealing with a true inner
+     * class (`@Nullable Outer.Inner`), not a static nested class (`@Nullable Map.Entry`). That's
+     * because the latter is rejected by javac itself ("scoping construct cannot be annotated with
+     * type-use annotation"). Thus, it's safe for our message to speak specifically about the
+     * inner-class case.
      */
-    Tree typeToCheckForAnnotations =
-        expression instanceof ParameterizedTypeTree
-            ? ((ParameterizedTypeTree) expression).getType()
-            : expression;
-    if (typeToCheckForAnnotations instanceof AnnotatedTypeTree) {
-      /*
-       * In all cases in which we report outer.annotated, we know that we're dealing with a true
-       * inner class (`@Nullable Outer.Inner`), not a static nested class (`@Nullable Map.Entry`).
-       * That's because the latter is rejected by javac itself ("scoping construct cannot be
-       * annotated with type-use annotation"). Thus, it's safe for our message to speak specifically
-       * about the inner-class case.
-       */
-      checkNoNullnessAnnotations(
-          tree,
-          ((AnnotatedTypeTree) typeToCheckForAnnotations).getAnnotations(),
-          "outer.annotated");
-    }
+    checkNoNullnessAnnotationsOnType(tree, expression, "outer.annotated");
     return super.visitMemberSelect(tree, p);
   }
 
@@ -511,10 +500,55 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     if (returnType != null) {
       if (isPrimitiveOrArrayOfPrimitive(returnType)) {
         checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
-      } else if (returnType instanceof MemberSelectTree) {
+      } else if (baseTypeTree(returnType) instanceof MemberSelectTree) {
         checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
       }
+    } else {
+      /*
+       * A constructor has no return type, but an annotation can still be written in that syntactic
+       * position (`@Nullable Foo() {}`), and javac attaches it to the method's own modifiers since
+       * there's no return-type tree to hang it on. It's meaningless there either way.
+       */
+      checkNoNullnessAnnotations(tree, annotations, "constructor.annotated");
     }
+    /*
+     * Thrown types aren't a recognized location for type-use annotations (a checked exception's
+     * nullness is not meaningful: you can't catch or throw a null reference). Like wildcard and
+     * type-parameter declarations, nothing about visitAnnotatedType's generic tree-scanning
+     * catches this: the annotated type in a throws clause has a perfectly ordinary Kind (e.g.
+     * IDENTIFIER for `throws @Nullable Exception`), so it falls through
+     * visitAnnotatedType's kind-specific checks unless we look for it here explicitly.
+     */
+    for (ExpressionTree thrownType : tree.getThrows()) {
+      checkNoNullnessAnnotationsOnType(tree, thrownType, "exception.type.annotated");
+    }
+    /*
+     * A receiver parameter (`void foo(Foo this)`) is always non-null -- like an enum constant, its
+     * nullness can't meaningfully vary. It carries ElementKind.PARAMETER, the same kind as an
+     * ordinary parameter, so it can't be picked out by kind the way visitVariable's
+     * IMPLEMENTATION_VARIABLE_KINDS branch picks out locals: that would wrongly flag every
+     * ordinary annotated parameter too. MethodTree exposes it directly, so check it here instead.
+     */
+    VariableTree receiverParameter = tree.getReceiverParameter();
+    if (receiverParameter != null) {
+      /*
+       * Unlike an ordinary variable, a receiver parameter's type-use annotation isn't always
+       * wrapped in an AnnotatedTypeTree around its type. Verified by inspection:
+       *
+       * - For a simple (unqualified) receiver type, e.g. `@Nullable Foo this`, getType() is a
+       *   plain JCIdent, and the annotation shows up in getModifiers() instead.
+       * - For a receiver type qualified by an enclosing class name, e.g. a nested class's
+       *   `Outer.@Nullable Inner this` (annotating the receiver's own type) or an inner class
+       *   constructor's `@Nullable Outer Outer.this` (its implicit enclosing-instance
+       *   parameter), getType() *is* an AnnotatedTypeTree as usual, and getModifiers() is empty.
+       *
+       * So check both; each is empty except in the shape it actually applies to.
+       */
+      checkNoNullnessAnnotations(
+          tree, receiverParameter.getModifiers().getAnnotations(), "receiver.annotated");
+      checkNoNullnessAnnotationsOnType(tree, receiverParameter.getType(), "receiver.annotated");
+    }
+    checkNoConflictingMarkingAnnotations(annotations);
     super.processMethodTree(className, tree);
   }
 
@@ -549,7 +583,32 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       return;
     }
 
+    checkNoConflictingMarkingAnnotations(tree.getModifiers().getAnnotations());
+
+    /*
+     * A supertype reference in an extends or implements clause is always non-null -- you can't
+     * extend or implement a possibly-null type. Nothing else visits these: they're not a
+     * variable's or method's type, so visitVariable/processMethodTree never see them, and their
+     * Kind is as ordinary as any other type-use (e.g. IDENTIFIER), so visitAnnotatedType's
+     * wildcard/primitive-specific branches don't either.
+     */
+    checkSupertypeClauseNotAnnotated(tree.getExtendsClause());
+    for (Tree implementsClause : tree.getImplementsClause()) {
+      checkSupertypeClauseNotAnnotated(implementsClause);
+    }
+
     super.processClassTree(tree);
+  }
+
+  /**
+   * Reports {@code supertype.annotated} if {@code clause} (an {@code extends} or {@code implements}
+   * clause, or {@code null} if the class has no {@code extends} clause) carries a nullness
+   * annotation.
+   */
+  private void checkSupertypeClauseNotAnnotated(@Nullable Tree clause) {
+    if (clause != null) {
+      checkNoNullnessAnnotationsOnType(clause, clause, "supertype.annotated");
+    }
   }
 
   private boolean isPrimitiveOrArrayOfPrimitive(Tree type) {
@@ -564,9 +623,34 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     while (tree instanceof ArrayTypeTree) {
       tree = ((ArrayTypeTree) tree).getType();
     }
-    if (tree instanceof AnnotatedTypeTree) {
+    checkNoNullnessAnnotationsOnType(treeToReportOn, tree, messageKey);
+  }
+
+  /**
+   * Returns the tree that carries {@code type}'s own annotations and determines its own shape. For
+   * a parameterized type like {@code Foo<Bar>}, that is the {@code Foo} part of the {@link
+   * ParameterizedTypeTree}, not the {@link ParameterizedTypeTree} itself: both an annotation on the
+   * type ({@code @Nullable Foo<Bar>}) and the qualified-name shape that distinguishes an outer type
+   * ({@code Outer.Inner<Bar>}) live there.
+   */
+  private static Tree baseTypeTree(@Nullable Tree type) {
+    return type instanceof ParameterizedTypeTree ? ((ParameterizedTypeTree) type).getType() : type;
+  }
+
+  /**
+   * Reports {@code messageKey} for each nullness annotation written directly on {@code type}.
+   *
+   * @param treeToReportOn the tree to report on, which need not be {@code type} itself
+   * @param type the type tree to inspect; nothing is reported if it is null or carries no
+   *     annotations of its own
+   * @param messageKey the message key to report
+   */
+  private void checkNoNullnessAnnotationsOnType(
+      Tree treeToReportOn, @Nullable Tree type, String messageKey) {
+    type = baseTypeTree(type);
+    if (type instanceof AnnotatedTypeTree) {
       checkNoNullnessAnnotations(
-          treeToReportOn, ((AnnotatedTypeTree) tree).getAnnotations(), messageKey);
+          treeToReportOn, ((AnnotatedTypeTree) type).getAnnotations(), messageKey);
     }
   }
 
@@ -592,6 +676,39 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
           "org.jspecify.annotations.NonNull",
           "org.jspecify.annotations.Nullable",
           "org.jspecify.annotations.NullnessUnspecified");
+
+  /*
+   * @NullMarked and @NullUnmarked are declaration annotations, each aliased (in
+   * NullSpecAnnotatedTypeFactory) to a different DefaultQualifier.List. CF's generic
+   * "conflicting annotations" check (BaseTypeValidator.isTopLevelValidType) only looks at
+   * *type-use* annotations on a validated AnnotatedTypeMirror, so it never notices that a single
+   * element carries both aliases. We look for the conflict directly in the declaration
+   * annotations, the same way checkNoNullnessAnnotations looks for JSpecify's type-use
+   * annotations in source rather than through the alias machinery.
+   */
+  private static final Set<String> MARKING_ANNOTATIONS =
+      Set.of("org.jspecify.annotations.NullMarked", "org.jspecify.annotations.NullUnmarked");
+
+  private void checkNoConflictingMarkingAnnotations(List<? extends AnnotationTree> annotations) {
+    List<AnnotationTree> markingAnnotationTrees = new ArrayList<>();
+    for (AnnotationTree annotationTree : annotations) {
+      if (MARKING_ANNOTATIONS.contains(
+          annotationName(annotationFromAnnotationTree(annotationTree)))) {
+        markingAnnotationTrees.add(annotationTree);
+      }
+    }
+    if (markingAnnotationTrees.size() > 1) {
+      // Report each annotation at its own position (rather than at treeToReportOn's, e.g. the
+      // enclosing class or method's), matching where the conformance tests' expected-fact
+      // comments are anchored: on the line of each conflicting annotation itself.
+      for (AnnotationTree annotationTree : markingAnnotationTrees) {
+        checker.reportError(
+            annotationTree,
+            "conflicting.annotations",
+            annotationName(annotationFromAnnotationTree(annotationTree)));
+      }
+    }
+  }
 
   @Override
   protected boolean checkMethodReferenceAsOverride(MemberReferenceTree tree, Void p) {

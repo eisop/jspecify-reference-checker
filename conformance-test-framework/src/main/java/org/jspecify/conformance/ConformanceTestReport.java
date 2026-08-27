@@ -74,7 +74,7 @@ public final class ConformanceTestReport {
         "# %,d pass; %,d fail; %,d total; %.1f%% score%n",
         passes, fails, total, 100.0 * passes / total);
     report.format(
-        "# (Note: The total includes 'not_enough_information' assertions, which pass silently and are not printed.)%n");
+        "# (Note: The total includes 'optional error' assertions -- not_enough_information, conflicting_annotations, intrinsically_not_nullable, and unrecognized_location -- which never count toward pass/fail, since a conformant tool is never wrong to skip them. not_enough_information also never prints its own line below: the spec permits either an explicit warning or silence there equally, so there's no 'right' choice to nudge toward. The other three -- cases where an annotation lands somewhere the spec gives no meaning, and this checker specifically aims to flag them all -- do print, as PASS when backed by a diagnostic and MISS when not; MISS is not a failure, just a nudge to check whether this checker meant to report something there.)%n");
     for (Path file : files) {
       ImmutableListMultimap<Long, ExpectedFact> expectedFactsInFile =
           index(expectedFactsByFile.get(file), Fact::getLineNumber);
@@ -83,14 +83,12 @@ public final class ConformanceTestReport {
       for (long lineNumber :
           ImmutableSortedSet.copyOf(
               union(expectedFactsInFile.keySet(), reportedFactsInFile.keySet()))) {
-        // Report all expected facts on this line and whether they're reported or not.
+        // Report all expected facts on this line and whether they're reported or not, except
+        // not_enough_information, which is silently excluded (see the note above).
         expectedFactsInFile.get(lineNumber).stream()
             .sorted(comparingLong(ExpectedFact::getFactLineNumber))
             .filter(not(ExpectedFact::isNullnessNotEnoughInformation))
-            .forEach(
-                expectedFact ->
-                    writeFact(
-                        report, expectedFact, matchesReportedFact(expectedFact) ? "PASS" : "FAIL"));
+            .forEach(expectedFact -> writeFact(report, expectedFact, statusOf(expectedFact)));
         if (details) {
           // Report all unexpected facts on this line and whether they must be expected or not.
           for (ReportedFact reportedFact : reportedFactsInFile.get(lineNumber)) {
@@ -112,7 +110,7 @@ public final class ConformanceTestReport {
 
   private long getFails() {
     return expectedFactsByFile.values().stream()
-            .filter(not(ExpectedFact::isNullnessNotEnoughInformation))
+            .filter(not(ExpectedFact::isOptionalErrorAssertion))
             .filter(not(this::matchesReportedFact))
             .count()
         + files.stream().map(reportedFactsByFile::get).filter(this::hasUnexpectedFacts).count();
@@ -128,6 +126,19 @@ public final class ConformanceTestReport {
 
   private boolean matchesReportedFact(ExpectedFact expectedFact) {
     return matchingFacts.containsKey(expectedFact);
+  }
+
+  /**
+   * Returns the printed status for {@code expectedFact}: {@code PASS}/{@code FAIL} for a required
+   * assertion, or, for an {@linkplain ExpectedFact#isOptionalErrorAssertion optional} one -- which
+   * never affects {@link #getFails}, whichever status prints here -- {@code PASS} if some
+   * diagnostic backs it and {@code MISS} if this checker reported nothing there at all.
+   */
+  private String statusOf(ExpectedFact expectedFact) {
+    if (matchesReportedFact(expectedFact)) {
+      return "PASS";
+    }
+    return expectedFact.isOptionalErrorAssertion() ? "MISS" : "FAIL";
   }
 
   private boolean isUnexpected(ReportedFact reportedFact) {

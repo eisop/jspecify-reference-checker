@@ -23,6 +23,7 @@ import static java.util.stream.Collectors.joining;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.jspecify.nullness.NullSpecChecker;
@@ -153,30 +154,39 @@ public final class ConformanceTest {
 
     private static final String DEREFERENCE = "dereference";
 
+    // Shared with NullSpecTest.CANNOT_CONVERT_MESSAGE_KEYS_EXCEPT_DEREFERENCE -- see that field's
+    // Javadoc for why the two harnesses read the same list instead of each keeping its own copy.
     private static final ImmutableSet<String> CANNOT_CONVERT_KEYS =
-        ImmutableSet.of(
-            "argument.type.incompatible",
-            "assignment.type.incompatible",
-            "atomicreference.must.include.null",
-            "cast.unsafe",
-            "lambda.param.type.incompatible",
-            "methodref.receiver.bound.invalid",
-            "methodref.receiver.invalid",
-            "methodref.return.invalid",
-            "override.param.invalid",
-            "override.receiver.invalid",
-            "override.return.invalid",
-            "return.type.incompatible",
-            "threadlocal.must.include.null",
-            "type.arguments.not.inferred",
-            "type.argument.type.incompatible");
+        NullSpecTest.CANNOT_CONVERT_MESSAGE_KEYS_EXCEPT_DEREFERENCE;
 
     private static final ImmutableSet<String> IRRELEVANT_ANNOTATION_KEYS =
         ImmutableSet.of(
+            "conflicting.annotations",
+            "exception.type.annotated",
             "local.variable.annotated",
             "primitive.annotated",
             "type.parameter.annotated",
             "wildcard.annotated");
+
+    /**
+     * The message key that CF's own {@code BaseTypeValidator.isTopLevelValidType} uses when a type
+     * use carries more than one annotation from our nullness hierarchy (e.g.
+     * {@code @Nullable @NonNull String}). Unlike our own {@code conflicting.annotations} checks
+     * (see {@link
+     * com.google.jspecify.nullness.NullSpecVisitor#checkNoConflictingMarkingAnnotations}), this
+     * diagnostic comes from CF's generic machinery, which by the time it runs has already resolved
+     * the JSpecify annotations to their internal, aliased qualifiers -- so its arguments name the
+     * internal qualifier classes ({@code Nullable}, {@code MinusNull}, ...), not the source-level
+     * JSpecify annotations the test expects ({@code Nullable}, {@code NonNull}, ...). {@link
+     * #INTERNAL_QUALIFIER_TO_PUBLIC_NAME} translates between the two.
+     */
+    private static final String CONFLICTING_ANNOS_KEY = "type.invalid.conflicting.annos";
+
+    private static final ImmutableMap<String, String> INTERNAL_QUALIFIER_TO_PUBLIC_NAME =
+        ImmutableMap.of(
+            "Nullable", "Nullable",
+            "MinusNull", "NonNull",
+            "NullnessUnspecified", "NullnessUnspecified");
 
     private final TestDiagnostic diagnostic;
 
@@ -195,7 +205,40 @@ public final class ConformanceTest {
         return DEREFERENCE.equals(diagnostic.getMessageKey())
             || CANNOT_CONVERT_KEYS.contains(diagnostic.getMessageKey());
       }
+      if (CONFLICTING_ANNOS_KEY.equals(diagnostic.getMessageKey())
+          && conflictingAnnotationPublicNames().stream()
+              .map(ReportedFact::irrelevantAnnotation)
+              .anyMatch(expectedFact::hasFactText)) {
+        return true;
+      }
+      // Falls through even for CONFLICTING_ANNOS_KEY: samples/README.md's own
+      // jspecify_conflicting_annotations assertion (distinct from the official corpus's
+      // test:irrelevant-annotation:* assertions handled above) is one of ExpectedFact's "optional
+      // error assertions", which super.matches() already satisfies for any required-error
+      // diagnostic on the same line, including this one.
       return super.matches(expectedFact);
+    }
+
+    /**
+     * Parses the internal qualifier names out of {@link #CONFLICTING_ANNOS_KEY}'s first argument
+     * (an {@code AnnotationMirrorSet}'s {@code toString()}, e.g. {@code "[@Nullable, @MinusNull]"})
+     * and translates each to the public JSpecify annotation name that a test's {@code
+     * test:irrelevant-annotation:*} comment would name, via {@link
+     * #INTERNAL_QUALIFIER_TO_PUBLIC_NAME}.
+     */
+    private ImmutableList<String> conflictingAnnotationPublicNames() {
+      if (!(diagnostic instanceof DetailedTestDiagnostic)) {
+        return ImmutableList.of();
+      }
+      List<String> args = ((DetailedTestDiagnostic) diagnostic).getAdditionalTokens();
+      if (args.isEmpty()) {
+        return ImmutableList.of();
+      }
+      String annotationList = args.get(0).replaceAll("[\\[\\]@]", "");
+      return Splitter.on(", ")
+          .splitToStream(annotationList)
+          .map(name -> INTERNAL_QUALIFIER_TO_PUBLIC_NAME.getOrDefault(name, name))
+          .collect(toImmutableList());
     }
 
     @Override
