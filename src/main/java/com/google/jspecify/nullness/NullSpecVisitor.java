@@ -38,11 +38,13 @@ import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.AssertTree;
+import com.sun.source.tree.AssignmentTree;
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
@@ -58,13 +60,16 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.util.TreeScanner;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
@@ -76,6 +81,7 @@ import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclared
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
+import org.checkerframework.javacutil.TreeUtils;
 
 final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory> {
   private final boolean checkImpl;
@@ -597,6 +603,8 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       checkSupertypeClauseNotAnnotated(implementsClause);
     }
 
+    checkUninitializedFields(tree);
+
     super.processClassTree(tree);
   }
 
@@ -608,6 +616,106 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   private void checkSupertypeClauseNotAnnotated(@Nullable Tree clause) {
     if (clause != null) {
       checkNoNullnessAnnotationsOnType(clause, clause, "supertype.annotated");
+    }
+  }
+
+  /**
+   * Reports an error on any instance field that has no initializer at its declaration, is never
+   * assigned in any constructor or instance initializer block, and whose type isn't definitely
+   * nullable -- so the implicit {@code null} the JVM gives it is incompatible with what the field
+   * claims to hold.
+   *
+   * <p>This is a purely syntactic check, not real initialization analysis: "assigned before
+   * construction completes" means some constructor's body, or some instance initializer block
+   * (which the JLS has javac insert into every constructor right after the {@code super()} call),
+   * contains a plain assignment statement to the field <em>on {@code this}</em> somewhere in its
+   * text, regardless of whether every control-flow path actually reaches it. That's deliberately
+   * coarser than sound initialization tracking (which would need a real dataflow subchecker) but
+   * catches the common case of a field with no initializer anywhere at all.
+   *
+   * <p>Only the declaring class's own members are scanned, so a non-private field of an abstract
+   * class that every concrete subclass assigns in its own constructor is still reported here. That
+   * matches what the class on its own guarantees, but it leaves {@code @SuppressWarnings} as the
+   * only escape hatch for that pattern.
+   *
+   * <p>Skips records entirely: a record component becomes a field with no declaration initializer,
+   * assigned by the canonical constructor, but that assignment is textually absent from an implicit
+   * canonical constructor (not present in the tree at all) and from a compact canonical
+   * constructor's body (javac appends the field stores after it) -- so this scan's "textual
+   * assignment somewhere in a constructor" heuristic can't see it and would report a false positive
+   * on every record with a non-nullable component and no explicit canonical constructor. The JLS
+   * forbids a record from declaring any instance field other than its components, so there is
+   * nothing else here to check.
+   *
+   * <p>TODO: Cover static fields too, scanning static initializer blocks (also members of
+   * ClassTree, distinguishable from instance initializer blocks via BlockTree.isStatic()) the same
+   * way we scan constructors here. Left out for now: unlike a constructor, a static field is
+   * commonly left without either a declaration initializer or a static-block assignment,
+   * initialized lazily later by a factory or setter method instead -- a real pattern this text-only
+   * scan can't distinguish from a genuine gap, so covering it needs more thought about false
+   * positives, not just the mechanical addition of another TreeScanner pass.
+   */
+  private void checkUninitializedFields(ClassTree tree) {
+    if (TreeUtils.isRecordTree(tree)) {
+      return;
+    }
+    List<VariableTree> uninitializedFields = new ArrayList<>();
+    for (Tree member : tree.getMembers()) {
+      if (member instanceof VariableTree) {
+        VariableTree field = (VariableTree) member;
+        if (field.getInitializer() == null
+            && !field.getModifiers().getFlags().contains(Modifier.STATIC)
+            && !isPrimitiveOrArrayOfPrimitive(field.getType())) {
+          uninitializedFields.add(field);
+        }
+      }
+    }
+    if (uninitializedFields.isEmpty()) {
+      return;
+    }
+
+    Set<Element> fieldsAssignedBeforeConstructionCompletes = new HashSet<>();
+    TreeScanner<Void, Void> assignmentScanner =
+        new TreeScanner<Void, Void>() {
+          @Override
+          public Void visitAssignment(AssignmentTree assignmentTree, Void p) {
+            ExpressionTree lhs = assignmentTree.getVariable();
+            /*
+             * Only an assignment to the instance under construction counts. `other.field = ...`
+             * assigns the same *element* on a different instance, so counting it would let a
+             * constructor that never touches its own field pass.
+             */
+            if (lhs instanceof IdentifierTree
+                || (lhs instanceof MemberSelectTree
+                    && TreeUtils.isExplicitThisDereference(
+                        ((MemberSelectTree) lhs).getExpression()))) {
+              fieldsAssignedBeforeConstructionCompletes.add(elementFromUse(lhs));
+            }
+            return super.visitAssignment(assignmentTree, p);
+          }
+        };
+    for (Tree member : tree.getMembers()) {
+      if (member instanceof MethodTree && TreeUtils.isConstructor((MethodTree) member)) {
+        BlockTree body = ((MethodTree) member).getBody();
+        if (body != null) {
+          body.accept(assignmentScanner, null);
+        }
+      } else if (member instanceof BlockTree && !((BlockTree) member).isStatic()) {
+        // An instance initializer block: the JLS has javac insert its content into every
+        // constructor right after the super() call, so an assignment there is exactly as
+        // reliable as one directly in a constructor's own body.
+        member.accept(assignmentScanner, null);
+      }
+    }
+
+    for (VariableTree field : uninitializedFields) {
+      if (fieldsAssignedBeforeConstructionCompletes.contains(elementFromDeclaration(field))) {
+        continue;
+      }
+      AnnotatedTypeMirror fieldType = atypeFactory.getAnnotatedType(field);
+      if (!atypeFactory.isNullInclusiveUnderEveryParameterization(fieldType)) {
+        checker.reportError(field, "field.uninitialized");
+      }
     }
   }
 
