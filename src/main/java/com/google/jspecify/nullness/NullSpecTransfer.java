@@ -585,7 +585,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
   private void refinePathGetFileNameResultIfDirectoryStreamLoop(
       MethodInvocationNode pathGetFileNameNode, TransferResult<CFValue, NullSpecStore> input) {
-    if (!util.javaNioFileDrectoryStream.isPresent()) {
+    if (!util.javaNioFileDirectoryStream.isPresent()) {
       // Running with j2cl's limited classpath.
       return;
     }
@@ -605,7 +605,8 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       EnhancedForLoopTree forLoop = (EnhancedForLoopTree) path.getLeaf();
 
       // Is the foreach over a DirectoryStream?
-      if (!isErasedSubtype(typeOf(forLoop.getExpression()), util.javaNioFileDrectoryStream.get())) {
+      if (!isErasedSubtype(
+          typeOf(forLoop.getExpression()), util.javaNioFileDirectoryStream.get())) {
         continue;
       }
 
