@@ -489,7 +489,15 @@ final class NullSpecAnnotatedTypeFactory
       if (!isLeastConvenientWorld && eitherIsUnspecified) {
         return true;
       }
-      return areSame(subAnno, minusNull) || areSame(superAnno, unionNull);
+      /*
+       * The final disjunct is reflexivity, which a QualifierHierarchy must provide and which the
+       * two preceding ones do not cover for parametricNull. (The unspecified/unspecified case is
+       * the one qualifier pair whose reflexivity is deliberately world-dependent, and both worlds'
+       * answers for it were already returned above.)
+       */
+      return areSame(subAnno, minusNull)
+          || areSame(superAnno, unionNull)
+          || areSame(subAnno, superAnno);
     }
 
     @Override

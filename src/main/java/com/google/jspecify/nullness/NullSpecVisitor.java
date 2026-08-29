@@ -468,7 +468,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
     if (isPrimitiveOrArrayOfPrimitive(tree.getType())) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
-    } else if (tree.getType() instanceof MemberSelectTree) {
+    } else if (baseTypeTree(tree.getType()) instanceof MemberSelectTree) {
       checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
     }
 
@@ -477,20 +477,22 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       checkNoNullnessAnnotations(tree, annotations, "enum.constant.annotated");
     } else if (IMPLEMENTATION_VARIABLE_KINDS.contains(kind)) {
       /*
-       * I had hoped to look up the annotations for "the variable type itself" with
-       * Element.getAnnotationMirrors, but that appears not to include annotations at all.
+       * A local's own type-use annotation lands in exactly one of two places: on the variable's
+       * modifiers when it is written first (`@Nullable String s`, per JLS 9.7.4), or on the type
+       * tree when a package or outer-type qualifier precedes it (`java.util.@Nullable List<String>
+       * s`). Check both; each is empty in the shape where the other applies.
        *
-       * I have an alternative that appears to work, but it could probably be simplified.
+       * (Element.getAnnotationMirrors would be the obvious way to ask for "the variable type
+       * itself," but it does not report type-use annotations at all.)
+       *
+       * An array's own annotation is instead reached through its component types, so it needs the
+       * separate walk below rather than either of these.
        */
       if (tree.getType() instanceof ArrayTypeTree) {
         checkNoNullnessAnnotationsOnArrayItself(tree, "local.variable.annotated");
-      } else if (tree.getType() instanceof AnnotatedTypeTree) {
-        checkNoNullnessAnnotations(
-            tree,
-            ((AnnotatedTypeTree) tree.getType()).getAnnotations(),
-            "local.variable.annotated");
       } else {
         checkNoNullnessAnnotations(tree, annotations, "local.variable.annotated");
+        checkNoNullnessAnnotationsOnType(tree, tree.getType(), "local.variable.annotated");
       }
     }
     return super.visitVariable(tree, p);
