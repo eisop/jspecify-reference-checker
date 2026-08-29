@@ -20,12 +20,10 @@ import static com.sun.source.tree.Tree.Kind.EXTENDS_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.PRIMITIVE_TYPE;
 import static com.sun.source.tree.Tree.Kind.SUPER_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.UNBOUNDED_WILDCARD;
-import static java.util.Arrays.asList;
 import static javax.lang.model.element.ElementKind.ENUM_CONSTANT;
 import static javax.lang.model.element.ElementKind.PACKAGE;
 import static org.checkerframework.framework.util.AnnotatedTypes.asSuper;
 import static org.checkerframework.javacutil.AnnotationUtils.annotationName;
-import static org.checkerframework.javacutil.AnnotationUtils.areSameByName;
 import static org.checkerframework.javacutil.TreeUtils.annotationFromAnnotationTree;
 import static org.checkerframework.javacutil.TreeUtils.annotationsFromTypeAnnotationTrees;
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
@@ -78,7 +76,6 @@ import org.checkerframework.common.basetype.TypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
-import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
@@ -304,6 +301,13 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitArrayAccess(tree, p);
   }
 
+  /**
+   * Replaces the superclass's whole check rather than adopting its narrower {@code
+   * getThrowUpperBoundAnnotations()} hook: that hook only changes which qualifier a thrown
+   * expression is checked against, but the superclass's check reports a fixed {@code
+   * throw.type.invalid} either way, and this checker's samples expect {@code dereference} (via
+   * {@link #ensureNonNull}, with its {@link #originString} context) instead.
+   */
   @Override
   protected void checkThrownExpression(ThrowTree tree) {
     ensureNonNull(tree.getExpression());
@@ -334,9 +338,8 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitMethodInvocation(MethodInvocationTree tree, Void p) {
-    ExecutableElement executable = elementFromUse(tree);
-
-    checkForAtomicReferenceConstructorCall(tree, executable);
+    // A MethodInvocationTree can invoke a constructor: an explicit `this(...)`/`super(...)` call.
+    checkForAtomicReferenceConstructorCall(tree, elementFromUse(tree));
 
     return super.visitMethodInvocation(tree, p);
   }
@@ -773,7 +776,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
        * represent the types internally in AnnotatedTypeMirror instances. Contrast this to almost
        * all other logic in the checker, which operates on the internal types.
        */
-      if (NULLNESS_ANNOTATIONS.stream().anyMatch(na -> areSameByName(annotation, na))) {
+      if (isNullnessAnnotation(annotation)) {
         checker.reportError(treeToReportOn, messageKey, annotationName(annotation));
       }
     }
@@ -844,7 +847,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   protected AnnotationMirrorSet getExceptionParameterLowerBoundAnnotations() {
-    return new AnnotationMirrorSet(asList(AnnotationBuilder.fromClass(elements, MinusNull.class)));
+    return AnnotationMirrorSet.singleton(util.minusNull);
   }
 
   @Override

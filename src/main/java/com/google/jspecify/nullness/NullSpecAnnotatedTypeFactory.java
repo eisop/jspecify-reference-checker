@@ -1009,7 +1009,41 @@ final class NullSpecAnnotatedTypeFactory
       return areEqual(type1, type2);
     }
 
+    /**
+     * Returns whether {@code type1} and {@code type2} are the same type in our nullness hierarchy.
+     *
+     * <p>This is (at least) the check that {@link DefaultTypeHierarchy#isContainedBy} performs for
+     * an <em>invariant</em> type-argument position, so it must be a full structural comparison: two
+     * types that differ only in the nullness of an array component or of a nested type argument are
+     * <em>not</em> the same type. Accordingly, we check two things:
+     *
+     * <ul>
+     *   <li>{@link #arePrimaryNullnessesEqual}: the types' own (primary) nullness operators, with
+     *       all the special cases that our hierarchy needs and that {@link
+     *       StructuralEqualityComparer#arePrimaryAnnosEqual} knows nothing about (unspecified
+     *       nullness is neither equal nor unequal to anything in the usual sense, its behavior
+     *       depends on the world we're in, and so forth), and
+     *   <li>{@link #areNestedTypesEqual}: the same comparison, applied recursively to any nested
+     *       types (array components, type arguments, wildcard bounds).
+     * </ul>
+     *
+     * <p>We can't simply delegate the recursion to the supermethod: its structural visitors compare
+     * primary annotations with {@code arePrimaryAnnosEqual}, which lacks all of the special cases
+     * above, and it would throw {@code BugInCF} for the type combinations it doesn't handle but
+     * that we do reach (thanks in part to our own non-standard treatment of type variables).
+     */
     private boolean areEqual(AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
+      return arePrimaryNullnessesEqual(type1, type2) && areNestedTypesEqual(type1, type2);
+    }
+
+    /**
+     * Returns whether {@code type1} and {@code type2} have the same nullness operator. Any nested
+     * types are the business of {@link #areNestedTypesEqual}, not of this method -- except
+     * incidentally, in that this method's last resort is the spec's definition of "same type,"
+     * which is a whole-type check and thus already accounts for them.
+     */
+    private boolean arePrimaryNullnessesEqual(
+        AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
       /*
        * Eventually, we'll test the spec definition: "type1 is a subtype of type2 and vice versa."
        * However, we perform some other tests first. Why?
@@ -1078,12 +1112,85 @@ final class NullSpecAnnotatedTypeFactory
       /*
        * TODO(cpovirk): Do we care about the base type, or is looking at annotations enough?
        * super.visitDeclared_Declared has a TODO with a similar question. Err, presumably normal
-       * Java type-checking has done that job. A more interesting question may be why we don't look
-       * at type args. The answer might be simply: "That's the contract, even though it is
-       * surprising, given the names of the class and its methods." (Granted, the docs of
-       * super.visitDeclared_Declared also say that it checks that "The types are of the same
-       * class/interfaces," so the contract isn't completely clear.)
+       * Java type-checking has done that job. (Nested types are handled by areNestedTypesEqual.)
        */
+    }
+
+    /**
+     * Returns whether the types nested inside {@code type1} and {@code type2} -- array components,
+     * type arguments, wildcard bounds -- are equal, recursively applying the full {@link #areEqual}
+     * comparison to each. Returns true if there is nothing nested to compare.
+     *
+     * <p>Without this, the two types of an invariant type-argument position would be compared only
+     * by their own nullness operators, so that, e.g., {@code Lib<Object[]>} would be accepted where
+     * {@code Lib<@Nullable Object[]>} is required: both arguments are non-nullable <em>arrays</em>,
+     * and the {@code @Nullable} that distinguishes them applies to the component type.
+     *
+     * <p>We deliberately do <em>not</em> recurse into the bounds of type <em>variables</em> (nor
+     * into intersection members, which are reached only through such bounds): as {@link
+     * NullSpecTypeHierarchy#visitTypevar_Typevar} explains, our substitution rules for type
+     * variables are non-standard, and comparing a type variable's bounds is neither necessary
+     * (corresponding type variables are the same type) nor safe.
+     *
+     * <p>"Not safe" is not theoretical: replacing the TYPEVAR/TYPEVAR fallthrough below with a
+     * comparison of the two variables' upper bounds' effective nullness produces spurious {@code
+     * argument.type.incompatible} errors on the inferred-type-argument cases in {@code
+     * tests/regression/TestInferredUnspecTypeArgument.java}. A bare bound-nullness comparison is
+     * too coarse for the substitution-sensitive comparison that {@link
+     * NullSpecTypeVariableSubstitutor} exists to get right.
+     */
+    private boolean areNestedTypesEqual(AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
+      if (type1.getKind() == ARRAY && type2.getKind() == ARRAY) {
+        return checkOrAreEqual(
+            ((AnnotatedArrayType) type1).getComponentType(),
+            ((AnnotatedArrayType) type2).getComponentType());
+      }
+      if (type1.getKind() == DECLARED && type2.getKind() == DECLARED) {
+        List<AnnotatedTypeMirror> args1 = ((AnnotatedDeclaredType) type1).getTypeArguments();
+        List<AnnotatedTypeMirror> args2 = ((AnnotatedDeclaredType) type2).getTypeArguments();
+        if (args1.size() != args2.size()) {
+          // One of the types is raw, so it has no type arguments to compare.
+          return true;
+        }
+        return allNestedEqual(type1, type2, args1, args2);
+      }
+      if (type1.getKind() == WILDCARD && type2.getKind() == WILDCARD) {
+        AnnotatedWildcardType wildcard1 = (AnnotatedWildcardType) type1;
+        AnnotatedWildcardType wildcard2 = (AnnotatedWildcardType) type2;
+        if (wildcard1.isTypeArgOfRawType() || wildcard2.isTypeArgOfRawType()) {
+          // Hope for the best, as isNullnessSubtype does for such wildcards.
+          return true;
+        }
+        return allNestedEqual(
+            type1,
+            type2,
+            asList(wildcard1.getExtendsBound(), wildcard1.getSuperBound()),
+            asList(wildcard2.getExtendsBound(), wildcard2.getSuperBound()));
+      }
+      return true;
+    }
+
+    /**
+     * Returns whether {@code nested1} and {@code nested2} are equal pairwise, recording an
+     * optimistic result for the pair ({@code type1}, {@code type2}) that contains them first, so
+     * that a recursive type (like {@code Enum<E extends Enum<E>>}) can't send us into infinite
+     * regress. {@link StructuralEqualityComparer#visitDeclared_Declared} does the same.
+     */
+    private boolean allNestedEqual(
+        AnnotatedTypeMirror type1,
+        AnnotatedTypeMirror type2,
+        List<AnnotatedTypeMirror> nested1,
+        List<AnnotatedTypeMirror> nested2) {
+      visitHistory.put(type1, type2, /* hierarchy= */ unionNull, true);
+      boolean result = true;
+      for (int i = 0; i < nested1.size(); i++) {
+        if (!checkOrAreEqual(nested1.get(i), nested2.get(i))) {
+          result = false;
+          break;
+        }
+      }
+      visitHistory.put(type1, type2, /* hierarchy= */ unionNull, result);
+      return result;
     }
   }
 

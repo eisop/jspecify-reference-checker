@@ -27,6 +27,16 @@ final class NullSpecStore extends CFAbstractStore<CFValue, NullSpecStore> {
     super(other);
   }
 
+  /**
+   * Stores a refinement for a nondeterministic expression -- a method call -- just as for a
+   * deterministic one, ignoring the superclass's {@code permitNondeterministic} argument.
+   *
+   * <p>This checker deliberately refines method calls: {@code NullSpecTransfer} records what a
+   * future {@code map.get(key)} will return from a preceding {@code map.containsKey(key)}, and
+   * {@code if (foo.bar() != null) foo.bar().baz()} is expected to work. Neither is sound in general
+   * -- an intervening call can invalidate either -- but rejecting them would be a false positive on
+   * ordinary code.
+   */
   @Override
   protected boolean shouldInsert(
       JavaExpression expr, CFValue value, boolean permitNondeterministic) {
