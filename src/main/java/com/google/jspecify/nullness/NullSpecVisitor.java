@@ -29,6 +29,7 @@ import static org.checkerframework.javacutil.TreeUtils.annotationsFromTypeAnnota
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
+import static org.checkerframework.javacutil.TreeUtils.typeOf;
 import static org.checkerframework.javacutil.TypesUtils.isPrimitive;
 
 import com.sun.source.tree.AnnotatedTypeTree;
@@ -56,6 +57,7 @@ import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
+import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
@@ -333,7 +335,27 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitIf(tree, p);
   }
 
-  // TODO: binary, unary, compoundassign, typecast, ...
+  @Override
+  public Void visitTypeCast(TypeCastTree tree, Void p) {
+    /*
+     * Casting a reference to a primitive type applies an unboxing conversion (JLS 5.1.8). If the
+     * reference is null, that conversion throws NullPointerException, exactly like a dereference.
+     * CF's own visitTypeCast only issues the `cast.unsafe` *warning* here, which does not express
+     * the nullness violation the samples expect (a hard mismatch for a @Nullable operand, "not
+     * enough information" for an unspecified one). So mirror the dereference check: require the
+     * operand to be null-exclusive when the cast target is primitive. (ensureNonNull no-ops when
+     * the operand is itself primitive, e.g. `(int) longValue`, since no unboxing occurs.) Check the
+     * resolved type, not `tree.getType() instanceof PrimitiveTypeTree`, so that an annotation
+     * written on the cast type (`(@Nullable int) obj`) doesn't hide the primitive-ness behind an
+     * AnnotatedTypeTree wrapper.
+     */
+    if (isPrimitive(typeOf(tree.getType()))) {
+      ensureNonNull(tree.getExpression());
+    }
+    return super.visitTypeCast(tree, p);
+  }
+
+  // TODO: binary, unary, compoundassign, ...
 
   @Override
   public Void visitMethodInvocation(MethodInvocationTree tree, Void p) {
