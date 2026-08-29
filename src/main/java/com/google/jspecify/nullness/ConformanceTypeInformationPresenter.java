@@ -20,6 +20,7 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
 import java.util.List;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.VariableElement;
 import org.checkerframework.framework.type.AnnotatedTypeFactory;
 import org.checkerframework.framework.type.AnnotatedTypeFormatter;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
@@ -65,16 +66,17 @@ public final class ConformanceTypeInformationPresenter extends AbstractTypeInfor
         Tree tree, AnnotatedTypeMirror type, TypeOccurrenceKind occurrenceKind) {
       switch (tree.getKind()) {
         case ASSIGNMENT:
-          AssignmentTree asgn = (AssignmentTree) tree;
-          AnnotatedTypeMirror varType =
-              genFactory != null
-                  ? genFactory.getAnnotatedTypeLhs(asgn.getVariable())
-                  : atypeFactory.getAnnotatedType(asgn.getVariable());
-          checker.reportWarning(
-              asgn.getVariable(),
-              "sinkType",
-              typeFormatter.format(varType),
-              asgn.getVariable().toString());
+          // visitAssignment calls reportTreeType twice for the same AssignmentTree -- once with
+          // the LHS's declared type, once with the RHS's type -- so report the sink only for the
+          // former, whose `type` is already the LHS's declared type.
+          if (occurrenceKind == TypeOccurrenceKind.ASSIGN_LHS_DECLARED_TYPE) {
+            AssignmentTree asgn = (AssignmentTree) tree;
+            checker.reportWarning(
+                asgn.getVariable(),
+                "sinkType",
+                typeFormatter.format(type),
+                asgn.getVariable().toString());
+          }
           break;
         case RETURN:
           checker.reportWarning(tree, "sinkType", typeFormatter.format(type), "return");
@@ -84,10 +86,16 @@ public final class ConformanceTypeInformationPresenter extends AbstractTypeInfor
           String methodName = calledElem.getSimpleName().toString();
           AnnotatedExecutableType calledType = (AnnotatedExecutableType) type;
           List<? extends AnnotatedTypeMirror> params = calledType.getParameterTypes();
+          List<? extends VariableElement> declaredParams = calledElem.getParameters();
 
           for (int i = 0; i < params.size(); ++i) {
-            String paramName = calledElem.getParameters().get(i).getSimpleName().toString();
-            String paramLocation = String.format("%s#%s", methodName, paramName);
+            // For a generic varargs call, params (from the invocation type) is expanded to the
+            // actual argument count, but declaredParams (from the method's declaration) is not:
+            // reuse the declared varargs parameter's name for each expanded position past it.
+            VariableElement declaredParam =
+                declaredParams.get(Math.min(i, declaredParams.size() - 1));
+            String paramLocation =
+                String.format("%s#%s", methodName, declaredParam.getSimpleName());
             checker.reportWarning(
                 tree, "sinkType", typeFormatter.format(params.get(i)), paramLocation);
           }
