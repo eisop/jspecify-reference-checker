@@ -30,6 +30,7 @@ import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
 import static org.checkerframework.javacutil.TreeUtils.typeOf;
+import static org.checkerframework.javacutil.TypesUtils.isCapturedTypeVariable;
 import static org.checkerframework.javacutil.TypesUtils.isPrimitive;
 
 import com.sun.source.tree.AnnotatedTypeTree;
@@ -78,6 +79,7 @@ import org.checkerframework.common.basetype.TypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
+import org.checkerframework.framework.type.AnnotatedTypeParameterBounds;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
@@ -204,6 +206,54 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   protected void checkConstructorResult(
       AnnotatedExecutableType constructorType, ExecutableElement constructorElement) {
     // TODO: ensure no explicit annotations on class & constructor
+  }
+
+  /**
+   * Returns {@code false} for a type argument that is the capture of a wildcard that was written in
+   * source, skipping the recheck that the argument is within the type parameter's bounds.
+   *
+   * <p>The Checker Framework capture-converts a parameterized type before checking it (see {@code
+   * BaseTypeValidator.visitParameterizedType}). A captured wildcard's upper bound is the greatest
+   * lower bound of the wildcard's extends bound and the type parameter's bound, so by construction
+   * it satisfies the type parameter's bound: the JLS never rejects a wildcard type argument for a
+   * bound mismatch. Rechecking that tautology here is harmful under this checker's nonstandard
+   * subtyping: in "strict mode," {@code unspecified <: unspecified} does not hold (it is "not
+   * enough information"), so the recheck rejects, for example, {@code A<?>} where the type
+   * parameter's bound has unspecified nullness. Skipping the recheck does not lose real checks:
+   * mismatches between a wildcard and its type parameter's bound are the containment checks that
+   * {@code BaseTypeValidator.visitParameterizedType} performs separately.
+   *
+   * <p>Method and constructor invocations are unaffected: a wildcard cannot be written as an
+   * explicit method or constructor type argument, so {@code typeArg} is never the capture of a
+   * source-written wildcard for those call sites.
+   *
+   * <p>Checking {@code typeArg} alone, without also inspecting {@code typeArgTree}, is enough:
+   * capture conversion (JLS 5.1.10) only ever produces a fresh type variable from a wildcard, so a
+   * captured type variable at this position implies the corresponding tree -- if present -- was a
+   * wildcard.
+   *
+   * @param toptree unused; the tree for error reporting, only used for inferred type arguments
+   * @param bounds unused; the bounds of the type parameter corresponding to {@code typeArg}
+   * @param typeArg the type argument from the type or method invocation
+   * @param typeArgTree the type argument as a tree, or {@code null} if the type argument was
+   *     inferred
+   * @param typeOrMethodName unused; the name of the type or method being checked
+   * @param paramName unused; the name of the type parameter corresponding to {@code typeArg}
+   * @return {@code false} if {@code typeArg} is the capture of a source-written wildcard
+   */
+  @Override
+  protected boolean shouldCheckTypeArgument(
+      Tree toptree,
+      AnnotatedTypeParameterBounds bounds,
+      AnnotatedTypeMirror typeArg,
+      @Nullable Tree typeArgTree,
+      CharSequence typeOrMethodName,
+      Object paramName) {
+    return typeArgTree == null || !isCapturedTypeVariable(typeArg.getUnderlyingType());
+  }
+
+  private static boolean isWildcardKind(Tree.Kind kind) {
+    return kind == UNBOUNDED_WILDCARD || kind == EXTENDS_WILDCARD || kind == SUPER_WILDCARD;
   }
 
   @Override
@@ -469,7 +519,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   public Void visitAnnotatedType(AnnotatedTypeTree tree, Void p) {
     List<? extends AnnotationTree> annotations = tree.getAnnotations();
     Kind kind = tree.getUnderlyingType().getKind();
-    if (kind == UNBOUNDED_WILDCARD || kind == EXTENDS_WILDCARD || kind == SUPER_WILDCARD) {
+    if (isWildcardKind(kind)) {
       checkNoNullnessAnnotations(tree, annotations, "wildcard.annotated");
     } else if (kind == PRIMITIVE_TYPE) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
