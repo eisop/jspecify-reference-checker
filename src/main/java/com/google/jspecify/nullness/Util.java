@@ -244,6 +244,14 @@ final class Util {
             overrider, overridden, (TypeElement) overrider.getEnclosingElement());
   }
 
+  /**
+   * Like {@link #isOrOverrides(ExecutableElement, ExecutableElement)}, but for an {@code
+   * overridden} method that may be absent, as it is when we run with j2cl's limited classpath.
+   */
+  boolean isOrOverrides(ExecutableElement overrider, Optional<ExecutableElement> overridden) {
+    return overridden.isPresent() && isOrOverrides(overrider, overridden.get());
+  }
+
   boolean isOrOverridesAnyOf(
       ExecutableElement overrider, ExecutableElement a, ExecutableElement b, ExecutableElement c) {
     return isOrOverrides(overrider, a)

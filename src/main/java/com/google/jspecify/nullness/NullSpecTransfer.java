@@ -45,7 +45,6 @@ import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
-import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
@@ -336,33 +335,33 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
               node, getter, input.getValueOfSubNode(node.getArgument(0)), thenStore, elseStore);
     }
 
-    if (isOrOverrides(method, util.pathGetFileNameElement)) {
+    if (util.isOrOverrides(method, util.pathGetFileNameElement)) {
       refinePathGetFileNameResultIfDirectoryStreamLoop(node, result);
     }
 
-    if (isOrOverrides(method, util.mapGetElement)) {
+    if (util.isOrOverrides(method, util.mapGetElement)) {
       refineMapGetResultIfKeySetLoop(node, result);
     }
 
-    if (isOrOverrides(method, util.mapContainsKeyElement)) {
+    if (util.isOrOverrides(method, util.mapContainsKeyElement)) {
       storeChanged |= refineFutureMapGetFromMapContainsKeyOrPut(node, thenStore);
     }
 
-    if (isOrOverrides(method, util.mapPutElement)) {
+    if (util.isOrOverrides(method, util.mapPutElement)) {
       storeChanged |= refineFutureMapGetFromMapContainsKeyOrPut(node, thenStore);
       storeChanged |= refineFutureMapGetFromMapContainsKeyOrPut(node, elseStore);
     }
 
-    if (isOrOverrides(method, util.annotatedElementIsAnnotationPresentElement)) {
+    if (util.isOrOverrides(method, util.annotatedElementIsAnnotationPresentElement)) {
       storeChanged |= refineFutureGetAnnotationFromIsAnnotationPresent(node, thenStore);
     }
 
-    if (isOrOverrides(method, util.classIsAnonymousClassElement)
-        || isOrOverrides(method, util.classIsMemberClassElement)) {
+    if (util.isOrOverrides(method, util.classIsAnonymousClassElement)
+        || util.isOrOverrides(method, util.classIsMemberClassElement)) {
       storeChanged |= refineFutureGetEnclosingClassFromIsEnclosedClass(node, thenStore);
     }
 
-    if (isOrOverrides(method, util.classIsArrayElement)) {
+    if (util.isOrOverrides(method, util.classIsArrayElement)) {
       storeChanged |= refineFutureGetComponentTypeFromIsArray(node, thenStore);
     }
 
@@ -399,33 +398,41 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
   private boolean refineFutureGetEnclosingClassFromIsEnclosedClass(
       MethodInvocationNode isEnclosedClassNode, NullSpecStore thenStore) {
-    // TODO(cpovirk): Reduce duplication between this and the methods nearby.
-    MethodCall isEnclosedClassCall = (MethodCall) fromNode(isEnclosedClassNode);
-    MethodCall getEnclosingClassCall =
-        new MethodCall(
-            util.javaLangClassElement.asType(),
-            // getEnclosingClass is present when isAnonymousClass/isMemberClass is.
-            util.classGetEnclosingClassElement.get(),
-            isEnclosedClassCall.getReceiver(),
-            isEnclosedClassCall.getArguments());
-    return refine(
-        getEnclosingClassCall,
-        analysis.createSingleAnnotationValue(minusNull, util.javaLangClassElement.asType()),
-        thenStore);
+    // getEnclosingClass is present when isAnonymousClass/isMemberClass is.
+    return refineFutureClassCallOnSameReceiver(
+        isEnclosedClassNode, util.classGetEnclosingClassElement.get(), thenStore);
   }
 
   private boolean refineFutureGetComponentTypeFromIsArray(
       MethodInvocationNode isArrayNode, NullSpecStore thenStore) {
-    // TODO(cpovirk): Reduce duplication between this and the methods nearby.
-    MethodCall isArrayCall = (MethodCall) fromNode(isArrayNode);
-    MethodCall getComponentTypeCall =
+    return refineFutureClassCallOnSameReceiver(
+        isArrayNode, util.classGetComponentTypeElement, thenStore);
+  }
+
+  /**
+   * Refines the future result of calling {@code futureCallElement} -- a {@code Class}-returning
+   * method declared on {@code java.lang.Class} -- on {@code conditionNode}'s receiver to non-null,
+   * in {@code thenStore}: the store reached when {@code conditionNode}, some other {@code Class}
+   * method that {@code futureCallElement} is known to agree with (e.g. {@code isMemberClass()} for
+   * {@code getEnclosingClass()}, {@code isArray()} for {@code getComponentType()}), evaluates to
+   * true on the same receiver.
+   *
+   * <p>The future call reuses {@code conditionNode}'s own argument list, which is correct only
+   * because every such pair is no-arg on both sides.
+   */
+  private boolean refineFutureClassCallOnSameReceiver(
+      MethodInvocationNode conditionNode,
+      ExecutableElement futureCallElement,
+      NullSpecStore thenStore) {
+    MethodCall conditionCall = (MethodCall) fromNode(conditionNode);
+    MethodCall futureCall =
         new MethodCall(
             util.javaLangClassElement.asType(),
-            util.classGetComponentTypeElement,
-            isArrayCall.getReceiver(),
-            isArrayCall.getArguments());
+            futureCallElement,
+            conditionCall.getReceiver(),
+            conditionCall.getArguments());
     return refine(
-        getComponentTypeCall,
+        futureCall,
         analysis.createSingleAnnotationValue(minusNull, util.javaLangClassElement.asType()),
         thenStore);
   }
@@ -559,7 +566,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
          * TODO(cpovirk): It would be more correct to pass the corresponding `TypeElement type`
          * to Elements.overrides.
          */
-        .filter(e -> isOrOverrides(e, method))
+        .filter(e -> util.isOrOverrides(e, method))
         .collect(toList());
   }
 
@@ -645,7 +652,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
       // Is the foreach over something.keySet()?
       ExecutableElement forExpressionElement = elementFromUse(forExpressionAsInvocation);
-      if (!isOrOverridesAnyOf(
+      if (!util.isOrOverridesAnyOf(
           forExpressionElement,
           util.mapKeySetElement,
           util.navigableMapNavigableKeySetElement,
@@ -1039,26 +1046,6 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       node = ((AssignmentNode) node).getTarget();
     }
     return fromNode(node);
-  }
-
-  private boolean isOrOverrides(
-      ExecutableElement overrider, Optional<ExecutableElement> overridden) {
-    // `overridden` can be absent if we're running with j2cl's limited classpath.
-    return overridden.isPresent() && isOrOverrides(overrider, overridden.get());
-  }
-
-  private boolean isOrOverrides(ExecutableElement overrider, ExecutableElement overridden) {
-    return overrider.equals(overridden)
-        || atypeFactory
-            .getElementUtils()
-            .overrides(overrider, overridden, (TypeElement) overrider.getEnclosingElement());
-  }
-
-  private boolean isOrOverridesAnyOf(
-      ExecutableElement overrider, ExecutableElement a, ExecutableElement b, ExecutableElement c) {
-    return isOrOverrides(overrider, a)
-        || isOrOverrides(overrider, b)
-        || isOrOverrides(overrider, c);
   }
 
   private boolean isErasedSubtype(TypeMirror sub, TypeMirror sup) {
