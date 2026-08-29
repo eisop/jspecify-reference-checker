@@ -41,6 +41,11 @@ import org.checkerframework.framework.source.SupportedOptions;
  *   <li>"checkImpl": Whether implementation code should be checked.
  *   <li>"showTypes": Whether to output type information for the conformance test suite.
  * </ol>
+ *
+ * <p>This checker's test harnesses additionally pass CF's own {@code -AcheckCastElementType}, which
+ * extends the cast-safety check past a cast's primary qualifier into its nested type arguments.
+ * That option is declared by {@code SourceChecker}, not here, and it is not hardcoded on because it
+ * requires a Checker Framework new enough to check a downcast without crashing.
  */
 @SupportedOptions({"strict", "checkImpl", "showTypes"})
 public final class NullSpecChecker extends BaseTypeChecker {
