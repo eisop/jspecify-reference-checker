@@ -468,7 +468,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
     if (isPrimitiveOrArrayOfPrimitive(tree.getType())) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
-    } else if (tree.getType() instanceof MemberSelectTree) {
+    } else if (baseTypeTree(tree.getType()) instanceof MemberSelectTree) {
       checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
     }
 
@@ -477,20 +477,18 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       checkNoNullnessAnnotations(tree, annotations, "enum.constant.annotated");
     } else if (IMPLEMENTATION_VARIABLE_KINDS.contains(kind)) {
       /*
-       * I had hoped to look up the annotations for "the variable type itself" with
-       * Element.getAnnotationMirrors, but that appears not to include annotations at all.
+       * A local's type-use annotation appears on its modifiers when written first (`@Nullable
+       * String s`, per JLS 9.7.4), or on the type tree when preceded by a package or outer-type
+       * qualifier (`java.util.@Nullable List<String> s`). Check both.
        *
-       * I have an alternative that appears to work, but it could probably be simplified.
+       * (Element.getAnnotationMirrors does not report type-use annotations. Array annotations are
+       * reached through component types and handled separately below.)
        */
       if (tree.getType() instanceof ArrayTypeTree) {
         checkNoNullnessAnnotationsOnArrayItself(tree, "local.variable.annotated");
-      } else if (tree.getType() instanceof AnnotatedTypeTree) {
-        checkNoNullnessAnnotations(
-            tree,
-            ((AnnotatedTypeTree) tree.getType()).getAnnotations(),
-            "local.variable.annotated");
       } else {
         checkNoNullnessAnnotations(tree, annotations, "local.variable.annotated");
+        checkNoNullnessAnnotationsOnType(tree, tree.getType(), "local.variable.annotated");
       }
     }
     return super.visitVariable(tree, p);

@@ -489,7 +489,13 @@ final class NullSpecAnnotatedTypeFactory
       if (!isLeastConvenientWorld && eitherIsUnspecified) {
         return true;
       }
-      return areSame(subAnno, minusNull) || areSame(superAnno, unionNull);
+      /*
+       * Provide reflexivity, which preceding checks do not cover for parametricNull. (The
+       * unspecified/unspecified pair is deliberately world-dependent and handled above.)
+       */
+      return areSame(subAnno, minusNull)
+          || areSame(superAnno, unionNull)
+          || areSame(subAnno, superAnno);
     }
 
     @Override
