@@ -30,6 +30,7 @@ import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
 import static org.checkerframework.javacutil.TreeUtils.typeOf;
+import static org.checkerframework.javacutil.TypesUtils.isCapturedTypeVariable;
 import static org.checkerframework.javacutil.TypesUtils.isPrimitive;
 
 import com.sun.source.tree.AnnotatedTypeTree;
@@ -78,6 +79,7 @@ import org.checkerframework.common.basetype.TypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
+import org.checkerframework.framework.type.AnnotatedTypeParameterBounds;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
@@ -204,6 +206,35 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   protected void checkConstructorResult(
       AnnotatedExecutableType constructorType, ExecutableElement constructorElement) {
     // TODO: ensure no explicit annotations on class & constructor
+  }
+
+  /**
+   * Returns {@code false} for a type argument that is the capture of a source-written wildcard,
+   * skipping the redundant bounds check.
+   *
+   * <p>Checker Framework capture-converts parameterized types before validation (see {@code
+   * BaseTypeValidator.visitParameterizedType}). A captured wildcard's upper bound is the GLB of the
+   * wildcard's extends bound and the type parameter's bound, satisfying the bound by construction.
+   * Rechecking this under our subtyping rules falsely rejects types like {@code A<?>} in strict
+   * mode when bounds have unspecified nullness. Actual wildcard-bound mismatches are already
+   * checked via wildcard containment in {@code BaseTypeValidator}.
+   *
+   * <p>Captured type variables only arise from wildcards (JLS 5.1.10), so checking whether {@code
+   * typeArg} is a captured type variable is sufficient.
+   */
+  @Override
+  protected boolean shouldCheckTypeArgument(
+      Tree toptree,
+      AnnotatedTypeParameterBounds bounds,
+      AnnotatedTypeMirror typeArg,
+      @Nullable Tree typeArgTree,
+      CharSequence typeOrMethodName,
+      Object paramName) {
+    return typeArgTree == null || !isCapturedTypeVariable(typeArg.getUnderlyingType());
+  }
+
+  private static boolean isWildcardKind(Tree.Kind kind) {
+    return kind == UNBOUNDED_WILDCARD || kind == EXTENDS_WILDCARD || kind == SUPER_WILDCARD;
   }
 
   @Override
@@ -469,7 +500,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   public Void visitAnnotatedType(AnnotatedTypeTree tree, Void p) {
     List<? extends AnnotationTree> annotations = tree.getAnnotations();
     Kind kind = tree.getUnderlyingType().getKind();
-    if (kind == UNBOUNDED_WILDCARD || kind == EXTENDS_WILDCARD || kind == SUPER_WILDCARD) {
+    if (isWildcardKind(kind)) {
       checkNoNullnessAnnotations(tree, annotations, "wildcard.annotated");
     } else if (kind == PRIMITIVE_TYPE) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
