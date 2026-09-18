@@ -175,6 +175,7 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
           "override.param.invalid",
           "override.receiver.invalid",
           "override.return.invalid",
+          "override.typaram.invalid",
           "return.type.incompatible",
           "threadlocal.must.include.null",
           "type.arguments.not.inferred",

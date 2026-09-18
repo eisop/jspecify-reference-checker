@@ -859,4 +859,73 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   protected TypeValidator createTypeValidator() {
     return new NullSpecTypeValidator(checker, this, atypeFactory, ((NullSpecChecker) checker).util);
   }
+
+  /**
+   * Returns an {@link OverrideChecker} enforcing parameter invariance: parameters may neither be
+   * widened (CF's contravariant default) nor narrowed.
+   *
+   * <p>Type-parameter bounds on generic methods need no custom override rules: CF's default {@code
+   * isTypeParameterBoundOverrideValid} already reports {@code override.typaram.invalid} correctly
+   * via this checker's {@link #typeHierarchy}.
+   */
+  @Override
+  protected OverrideChecker createOverrideChecker(
+      Tree overriderTree,
+      AnnotatedExecutableType overrider,
+      AnnotatedTypeMirror overriderType,
+      AnnotatedTypeMirror overriderReturnType,
+      AnnotatedExecutableType overridden,
+      AnnotatedDeclaredType overriddenType,
+      AnnotatedTypeMirror overriddenReturnType) {
+    return new InvariantParameterOverrideChecker(
+        overriderTree,
+        overrider,
+        overriderType,
+        overriderReturnType,
+        overridden,
+        overriddenType,
+        overriddenReturnType);
+  }
+
+  /**
+   * Enforces parameter invariance by requiring {@code overriderParam} to be a subtype of {@code
+   * capturedOverriddenParam}, in addition to {@link OverrideChecker#isParameterOverrideValid}'s
+   * contravariant check. Skipped for method references, which have no declared parameter types of
+   * their own to compare.
+   */
+  private final class InvariantParameterOverrideChecker extends OverrideChecker {
+    InvariantParameterOverrideChecker(
+        Tree overriderTree,
+        AnnotatedExecutableType overrider,
+        AnnotatedTypeMirror overriderType,
+        AnnotatedTypeMirror overriderReturnType,
+        AnnotatedExecutableType overridden,
+        AnnotatedDeclaredType overriddenType,
+        AnnotatedTypeMirror overriddenReturnType) {
+      super(
+          overriderTree,
+          overrider,
+          overriderType,
+          overriderReturnType,
+          overridden,
+          overriddenType,
+          overriddenReturnType);
+    }
+
+    @Override
+    protected boolean isParameterOverrideValid(
+        AnnotatedTypeMirror capturedOverriddenParam,
+        AnnotatedTypeMirror overriddenParam,
+        AnnotatedTypeMirror overriderParam) {
+      if (!super.isParameterOverrideValid(
+          capturedOverriddenParam, overriddenParam, overriderParam)) {
+        return false;
+      }
+      if (isMethodReference) {
+        return true;
+      }
+      return typeHierarchy.isSubtype(overriderParam, capturedOverriddenParam)
+          || testTypevarContainment(overriderParam, overriddenParam);
+    }
+  }
 }
