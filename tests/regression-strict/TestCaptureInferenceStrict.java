@@ -4,9 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 @NullMarked
 abstract class TestCaptureInferenceStrict {
-  // Null-unmarked so that the bare `<T>` bound defaults to unspecified (per the spec rule for the
-  // bound of an Object-bounded type parameter outside a null-marked scope), without writing the
-  // fork-only `@NullnessUnspecified` annotation.
+  // Null-unmarked so bare `<T>` defaults to unspecified nullness without explicit annotations.
   @NullUnmarked
   interface UnspecBounded<T> {
     T get();
@@ -20,13 +18,12 @@ abstract class TestCaptureInferenceStrict {
 
   abstract <T extends @Nullable Object> @Nullable T unionNull(T input);
 
-  // Should NOT produce type.arguments.not.inferred in strict mode:
+  // Should not produce type.arguments.not.inferred in strict mode:
   @Nullable Object x6(UnspecBounded<? extends Lib> x) {
     return unionNull(x.get());
   }
 
-  // Null-unmarked so the explicit wildcard upper bound `? extends Lib` also defaults to
-  // unspecified (falls through to OTHERWISE, which is unspecified outside null-marked scope).
+  // Null-unmarked so explicit wildcard bound `? extends Lib` defaults to unspecified nullness.
   @NullUnmarked
   @Nullable Object x7(UnspecBounded<? extends Lib> x) {
     return unionNull(x.get());

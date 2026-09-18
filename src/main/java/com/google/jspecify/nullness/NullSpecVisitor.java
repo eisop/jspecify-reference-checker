@@ -240,16 +240,16 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   }
 
   /**
-   * Suppresses spurious type-argument-inference-failure errors caused by this checker's nonstandard
-   * subtyping in strict mode ({@code NullnessUnspecified <: NullnessUnspecified} is false).
-   * Inference is suppressed only when:
+   * Suppresses spurious inference failures caused by strict-mode subtyping (where {@code
+   * NullnessUnspecified <: NullnessUnspecified} is false).
+   *
+   * <p>Inference errors are suppressed only when:
    *
    * <ul>
-   *   <li>All type parameters have null-inclusive upper bounds (the top), AND
-   *   <li>The method has at most as many arguments as type parameters (ruling out multi-argument
-   *       calls where genuine conflicts between arguments can arise), AND
-   *   <li>None of the arguments is a lambda or method reference (which create structural
-   *       constraints that can legitimately conflict even with a nullable-bounded type param).
+   *   <li>All type parameters have null-inclusive (top) upper bounds,
+   *   <li>The call has at most as many arguments as type parameters (ruling out multi-argument
+   *       conflicts), and
+   *   <li>No argument is a lambda or method reference.
    * </ul>
    */
   @Override
@@ -262,9 +262,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   private boolean isSpuriousInferenceFailure(
       ExpressionTree tree, AnnotatedExecutableType methodType) {
-    // All type parameter bounds must be null-inclusive (top). For intersection bounds, check
-    // each component individually because CF homogenizes the intersection's primary annotation
-    // from the first bound.
+    // All type parameter bounds must be null-inclusive (top).
     for (AnnotatedTypeVariable typeVar : methodType.getTypeVariables()) {
       if (!atypeFactory.isUpperBoundNullInclusive(typeVar)) {
         return false;

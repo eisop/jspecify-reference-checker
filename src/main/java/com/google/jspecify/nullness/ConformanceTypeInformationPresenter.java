@@ -66,9 +66,8 @@ public final class ConformanceTypeInformationPresenter extends AbstractTypeInfor
         Tree tree, AnnotatedTypeMirror type, TypeOccurrenceKind occurrenceKind) {
       switch (tree.getKind()) {
         case ASSIGNMENT:
-          // visitAssignment calls reportTreeType twice for the same AssignmentTree -- once with
-          // the LHS's declared type, once with the RHS's type -- so report the sink only for the
-          // former, whose `type` is already the LHS's declared type.
+          // visitAssignment calls reportTreeType twice for an AssignmentTree (LHS declared type and
+          // RHS type). Report the sink only for the LHS declared type.
           if (occurrenceKind == TypeOccurrenceKind.ASSIGN_LHS_DECLARED_TYPE) {
             AssignmentTree asgn = (AssignmentTree) tree;
             checker.reportWarning(
@@ -89,9 +88,9 @@ public final class ConformanceTypeInformationPresenter extends AbstractTypeInfor
           List<? extends VariableElement> declaredParams = calledElem.getParameters();
 
           for (int i = 0; i < params.size(); ++i) {
-            // For a generic varargs call, params (from the invocation type) is expanded to the
-            // actual argument count, but declaredParams (from the method's declaration) is not:
-            // reuse the declared varargs parameter's name for each expanded position past it.
+            // For generic varargs, invocation params are expanded to argument count while
+            // declaredParams are not. Reuse the varargs parameter for expanded positions past the
+            // declared count.
             VariableElement declaredParam =
                 declaredParams.get(Math.min(i, declaredParams.size() - 1));
             String paramLocation =
