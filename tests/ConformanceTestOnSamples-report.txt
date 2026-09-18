@@ -1,4 +1,4 @@
-# 1,267 pass; 45 fail; 1,312 total; 96.6% score
+# 1,274 pass; 38 fail; 1,312 total; 97.1% score
 # (Note: The total includes 'optional error' assertions -- not_enough_information, conflicting_annotations, intrinsically_not_nullable, and unrecognized_location -- which never count toward pass/fail, since a conformant tool is never wrong to skip them. not_enough_information also never prints its own line below: the spec permits either an explicit warning or silence there equally, so there's no 'right' choice to nudge toward. The other three -- cases where an annotation lands somewhere the spec gives no meaning, and this checker specifically aims to flag them all -- do print, as PASS when backed by a diagnostic and MISS when not; MISS is not a failure, just a nudge to check whether this checker meant to report something there.)
 PASS: AnnotatedInnerOfNonParameterized.java:31:jspecify_nullness_intrinsically_not_nullable
 PASS: AnnotatedInnerOfNonParameterized.java:35:jspecify_nullness_intrinsically_not_nullable
@@ -52,7 +52,7 @@ PASS: CaptureAsInferredTypeArgument.java:51:jspecify_nullness_mismatch
 PASS: CaptureAsInferredTypeArgument.java:53:jspecify_nullness_mismatch
 PASS: CaptureAsInferredTypeArgument.java:61:jspecify_nullness_mismatch
 PASS: CaptureAsInferredTypeArgument.java:63:jspecify_nullness_mismatch
-FAIL: CaptureAsInferredTypeArgument.java: no unexpected facts
+PASS: CaptureAsInferredTypeArgument.java: no unexpected facts
 PASS: CaptureConversionForSubtyping.java: no unexpected facts
 PASS: CaptureConvertedToObject.java:71:jspecify_nullness_mismatch
 FAIL: CaptureConvertedToObject.java: no unexpected facts
@@ -134,7 +134,7 @@ PASS: ComplexParametric.java:245:jspecify_nullness_mismatch
 PASS: ComplexParametric.java:248:jspecify_nullness_mismatch
 PASS: ComplexParametric.java:259:jspecify_nullness_mismatch
 PASS: ComplexParametric.java:263:jspecify_nullness_mismatch
-FAIL: ComplexParametric.java: no unexpected facts
+PASS: ComplexParametric.java: no unexpected facts
 PASS: ConcatResult.java: no unexpected facts
 PASS: ConflictingAnnotations.java:23:jspecify_conflicting_annotations
 PASS: ConflictingAnnotations.java:25:jspecify_conflicting_annotations
@@ -186,20 +186,20 @@ PASS: InstanceOfCheck.java:44:jspecify_nullness_mismatch
 PASS: InstanceOfCheck.java: no unexpected facts
 PASS: IntersectionSupertype.java:98:jspecify_nullness_mismatch
 PASS: IntersectionSupertype.java:101:jspecify_nullness_mismatch
-FAIL: IntersectionSupertype.java:104:jspecify_nullness_mismatch
+PASS: IntersectionSupertype.java:104:jspecify_nullness_mismatch
 PASS: IntersectionSupertype.java:107:jspecify_nullness_mismatch
 PASS: IntersectionSupertype.java:116:jspecify_nullness_mismatch
 PASS: IntersectionSupertype.java: no unexpected facts
 PASS: LocalVariable.java:44:jspecify_nullness_mismatch
 PASS: LocalVariable.java: no unexpected facts
 PASS: MultiBoundTypeVariableToObject.java:59:jspecify_nullness_mismatch
-FAIL: MultiBoundTypeVariableToObject.java: no unexpected facts
+PASS: MultiBoundTypeVariableToObject.java: no unexpected facts
 PASS: MultiBoundTypeVariableToObjectUnionNull.java: no unexpected facts
-FAIL: MultiBoundTypeVariableToObjectUnspec.java: no unexpected facts
+PASS: MultiBoundTypeVariableToObjectUnspec.java: no unexpected facts
 PASS: MultiBoundTypeVariableToOther.java:59:jspecify_nullness_mismatch
-FAIL: MultiBoundTypeVariableToOther.java: no unexpected facts
+PASS: MultiBoundTypeVariableToOther.java: no unexpected facts
 PASS: MultiBoundTypeVariableToOtherUnionNull.java: no unexpected facts
-FAIL: MultiBoundTypeVariableToOtherUnspec.java: no unexpected facts
+PASS: MultiBoundTypeVariableToOtherUnspec.java: no unexpected facts
 PASS: MultiBoundTypeVariableToSelf.java: no unexpected facts
 PASS: MultiBoundTypeVariableToSelfUnionNull.java: no unexpected facts
 PASS: MultiBoundTypeVariableToSelfUnspec.java: no unexpected facts

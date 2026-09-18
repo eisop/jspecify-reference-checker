@@ -300,9 +300,14 @@ public final class ConformanceTest {
      *   <li>Nullness sigils {@code ?}, {@code !}, and {@code *} move from after the type arguments
      *       to before them.
      *   <li>If there is no nullness sigil, use {@code !}. (TODO: What about parametric nullness?)
+     *   <li>A captured type variable's arbitrary, non-deterministic numeric identifier (e.g. {@code
+     *       capture#237}) is dropped, leaving the bare word {@code capture}, matching the
+     *       conformance corpus's own convention (its {@code expression-type} assertions never
+     *       include one) -- CF assigns these purely for that compiler run's own diagnostics.
      * </ul>
      */
     private static String fixType(String type) {
+      type = CAPTURE_ID.matcher(type).replaceAll("capture");
       Matcher matcher = TYPE.matcher(type);
       if (!matcher.matches()) {
         return type;
@@ -326,6 +331,8 @@ public final class ConformanceTest {
 
     private static final Pattern TYPE =
         Pattern.compile("(?<raw>[^<,?!*]+)(?:<(?<args>.+)>)?(?<suffix>[?!*])?");
+
+    private static final Pattern CAPTURE_ID = Pattern.compile("capture#\\d+");
 
     private static final Splitter COMMA_SPLITTER = Splitter.on(",");
   }

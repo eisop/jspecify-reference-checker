@@ -711,7 +711,21 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       AnnotatedTypeMirror mapValueType = typeAsMap.getTypeArguments().get(1);
       mapValueAsDataflowValue =
           analysis.createAbstractValue(
-              mapValueType.getAnnotations(), mapValueType.getUnderlyingType());
+              dataflowAnnotationsForMapValue(mapValueType), mapValueType.getUnderlyingType());
+    }
+
+    /**
+     * Returns the primary nullness operator(s) for a refined {@code map.get(key)} dataflow value.
+     * For the capture of a definitely-nullable wildcard (see {@link
+     * NullSpecAnnotatedTypeFactory#isCaptureOfDefinitelyNullableExtendsWildcard}), projects
+     * UNION_NULL from its upper bound onto the value; otherwise uses {@code mapValueType}'s
+     * annotations as-is.
+     */
+    private AnnotationMirrorSet dataflowAnnotationsForMapValue(AnnotatedTypeMirror mapValueType) {
+      if (atypeFactory.isCaptureOfDefinitelyNullableExtendsWildcard(mapValueType)) {
+        return AnnotationMirrorSet.singleton(unionNull);
+      }
+      return mapValueType.getAnnotations();
     }
   }
 
