@@ -1,4 +1,4 @@
-# 116 pass; 1 fail; 117 total; 99.1% score
+# 117 pass; 0 fail; 117 total; 100.0% score
 # (Note: The total includes 'optional error' assertions -- not_enough_information, conflicting_annotations, intrinsically_not_nullable, and unrecognized_location -- which never count toward pass/fail, since a conformant tool is never wrong to skip them. not_enough_information also never prints its own line below: the spec permits either an explicit warning or silence there equally, so there's no 'right' choice to nudge toward. The other three -- cases where an annotation lands somewhere the spec gives no meaning, and this checker specifically aims to flag them all -- do print, as PASS when backed by a diagnostic and MISS when not; MISS is not a failure, just a nudge to check whether this checker meant to report something there.)
 PASS: Basic.java:28:test:expression-type:Object?:nullable
 PASS: Basic.java:28:test:sink-type:Object!:return
@@ -16,7 +16,7 @@ PASS: Irrelevant.java:43:test:irrelevant-annotation:NonNull
 PASS: Irrelevant.java:43:test:irrelevant-annotation:Nullable
 PASS: Irrelevant.java:47:test:irrelevant-annotation:NullMarked
 PASS: Irrelevant.java:49:test:irrelevant-annotation:NullUnmarked
-FAIL: Irrelevant.java: no unexpected facts
+PASS: Irrelevant.java: no unexpected facts
 PASS: UsesDep.java:24:test:cannot-convert:null? to Dep*
 PASS: UsesDep.java: no unexpected facts
 PASS: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java:Nullable on simple type parameter on method:test:irrelevant-annotation:Nullable
