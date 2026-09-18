@@ -25,6 +25,7 @@ import com.sun.tools.javac.processing.JavacProcessingEnvironment;
 import com.sun.tools.javac.util.Log;
 import java.util.NavigableSet;
 import java.util.TreeSet;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
@@ -76,6 +77,21 @@ public final class NullSpecChecker extends BaseTypeChecker {
   @Override
   protected String suppressWarningsString(String messageKey) {
     return "nullness";
+  }
+
+  @Override
+  public boolean shouldSuppressWarnings(Element elt, String errKey) {
+    /*
+     * CF's own "conflicting.defaults" check fires whenever an element carries two
+     * @DefaultQualifier-derived annotations that set the same location differently. For this
+     * checker, the only way that happens is @NullMarked and @NullUnmarked on the same element
+     * (each aliases to a conflicting DefaultQualifier.List), and NullSpecVisitor's
+     * checkNoConflictingMarkingAnnotations already reports that conflict more precisely: one
+     * conflicting.annotations error per marking annotation, anchored at the annotation's own
+     * position, rather than one conflicting.defaults error per internal TypeUseLocation, anchored
+     * at the element. Suppress the redundant, CF-internal-vocabulary diagnostic unconditionally.
+     */
+    return errKey.equals("conflicting.defaults") || super.shouldSuppressWarnings(elt, errKey);
   }
 
   @Override
