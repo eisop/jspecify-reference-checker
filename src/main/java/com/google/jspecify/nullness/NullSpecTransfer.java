@@ -39,7 +39,6 @@ import com.sun.source.util.TreePath;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -173,11 +172,11 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       storeChanged |= refineNonNull(node.getArgument(0), elseStore);
     }
 
-    if (isGetCanonicalNameOnClassLiteral(node)) {
+    if (isCallTo(node, "Class", "getCanonicalName") && isOnClassLiteral(node)) {
       setResultValueToNonNull(result);
     }
 
-    if (isGetClassLoaderClassLiteral(node)) {
+    if (isCallTo(node, "Class", "getClassLoader") && isOnClassLiteral(node)) {
       /*
        * getClassLoader can return null for classes from the bootstrap class loader. Here, we assume
        * that it returns non-null -- but only if it's called on a class literal. That assumption is
@@ -281,38 +280,24 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
         || isValueOf(method, util.converterConvertElement)
         || isValueOf(method, util.optionalToJavaUtilElement)
         || isValueOf(method, util.optionalFromJavaUtilElement)) {
-      AnnotatedTypeMirror type = typeWithTopLevelAnnotationsOnly(input, node.getArgument(0));
-      if (atypeFactory.withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(type)) {
-        setResultValueToNonNull(result);
-      } else if (atypeFactory
-          .withMostConvenientWorld()
-          .isNullExclusiveUnderEveryParameterization(type)) {
-        /*
-         * If T has a non-null bound -- as it does in our current declarations of the types we're
-         * currently handling here -- then returning `@NullnessUnspecified T` is correct.
-         *
-         * If T has an unspecified bound, then we may return `@NullnessUnspecified T` when we ought
-         * to have returned a plain `T`. Fortunately, this would matter only in strict mode.
-         *
-         * If T has a nullable bound, then returning `@NullnessUnspecified T` would not accomplish
-         * what we want: We want a type that is null-exclusive in lenient mode, but
-         * `@NullnessUnspecified T` does not accomplish that when T has a nullable bound. If we
-         * wanted to handle that case, we'd need to enhance our model to support an additional
-         * nullness operator that "projects" to unspecified nullness, just as @NonNull "projects" to
-         * non-null, regardless of what the type variable it's applied to otherwise permits.
-         */
-        setResultValueOperatorToUnspecified(result);
-      }
+      /*
+       * If T has a non-null bound -- as it does in our current declarations of the types we're
+       * currently handling here -- then returning `@NullnessUnspecified T` is correct.
+       *
+       * If T has an unspecified bound, then we may return `@NullnessUnspecified T` when we ought
+       * to have returned a plain `T`. Fortunately, this would matter only in strict mode.
+       *
+       * If T has a nullable bound, then returning `@NullnessUnspecified T` would not accomplish
+       * what we want: We want a type that is null-exclusive in lenient mode, but
+       * `@NullnessUnspecified T` does not accomplish that when T has a nullable bound. If we
+       * wanted to handle that case, we'd need to enhance our model to support an additional
+       * nullness operator that "projects" to unspecified nullness, just as @NonNull "projects" to
+       * non-null, regardless of what the type variable it's applied to otherwise permits.
+       */
+      narrowResultFromArgument(result, input, node.getArgument(0));
     } else if (method.equals(util.objectsToStringTwoArgElement)) {
       // Just like the case above but for arg 1 instead of arg 0.
-      AnnotatedTypeMirror type = typeWithTopLevelAnnotationsOnly(input, node.getArgument(1));
-      if (atypeFactory.withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(type)) {
-        setResultValueToNonNull(result);
-      } else if (atypeFactory
-          .withMostConvenientWorld()
-          .isNullExclusiveUnderEveryParameterization(type)) {
-        setResultValueOperatorToUnspecified(result);
-      }
+      narrowResultFromArgument(result, input, node.getArgument(1));
     } else if (nameMatches(method, "System", "getProperty")) {
       Node arg = node.getArgument(0);
       if (arg instanceof StringLiteralNode
@@ -344,16 +329,11 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       setResultValueToNonNull(result);
     }
 
-    for (Entry<ExecutableElement, ExecutableElement> entry : util.getterForSetter.entrySet()) {
-      if (method.equals(entry.getKey())) {
-        storeChanged |=
-            overwriteGetterFromSetter(
-                node,
-                entry.getValue(),
-                input.getValueOfSubNode(node.getArgument(0)),
-                thenStore,
-                elseStore);
-      }
+    ExecutableElement getter = util.getterForSetter.get(method);
+    if (getter != null) {
+      storeChanged |=
+          overwriteGetterFromSetter(
+              node, getter, input.getValueOfSubNode(node.getArgument(0)), thenStore, elseStore);
     }
 
     if (isOrOverrides(method, util.pathGetFileNameElement)) {
@@ -706,85 +686,58 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     }
   }
 
-  private boolean isGetCanonicalNameOnClassLiteral(MethodInvocationNode node) {
-    ExecutableElement method = node.getTarget().getMethod();
-    if (!nameMatches(method, "Class", "getCanonicalName")) {
-      return false;
-    }
-    return isOnClassLiteral(node);
+  /** Returns whether {@code node} is a call to {@code clazz.method(...)}. */
+  private static boolean isCallTo(MethodInvocationNode node, String clazz, String method) {
+    return nameMatches(node.getTarget().getMethod(), clazz, method);
   }
 
-  private boolean isGetClassLoaderClassLiteral(MethodInvocationNode node) {
-    ExecutableElement method = node.getTarget().getMethod();
-    if (!nameMatches(method, "Class", "getClassLoader")) {
-      return false;
-    }
-    return isOnClassLiteral(node);
-  }
-
-  private boolean isOnClassLiteral(MethodInvocationNode node) {
+  /** Returns whether {@code node} is a call on a class literal, as in {@code Foo.class.bar()}. */
+  private static boolean isOnClassLiteral(MethodInvocationNode node) {
     Node receiver = node.getTarget().getReceiver();
-    if (!(receiver instanceof FieldAccessNode)) {
-      return false;
-    }
-    FieldAccessNode fieldAccess = (FieldAccessNode) receiver;
-    return fieldAccess.getFieldName().equals("class");
+    return receiver instanceof FieldAccessNode
+        && ((FieldAccessNode) receiver).getFieldName().equals("class");
   }
 
-  private boolean isGetClassLoaderClassOnThisGetClass(MethodInvocationNode node) {
-    ExecutableElement method = node.getTarget().getMethod();
-    if (!nameMatches(method, "Class", "getClassLoader")) {
-      return false;
-    }
+  /**
+   * Returns the call that produced {@code node}'s receiver, if that receiver is a call to {@code
+   * clazz.method(...)}, and otherwise null.
+   */
+  private static MethodInvocationNode receiverCallTo(
+      MethodInvocationNode node, String clazz, String method) {
     Node receiver = node.getTarget().getReceiver();
-    if (!(receiver instanceof MethodInvocationNode)) {
-      return false;
+    if (receiver instanceof MethodInvocationNode
+        && isCallTo((MethodInvocationNode) receiver, clazz, method)) {
+      return (MethodInvocationNode) receiver;
     }
-    MethodInvocationNode invocation = (MethodInvocationNode) receiver;
-    if (!nameMatches(invocation.getTarget().getMethod(), "Object", "getClass")) {
-      return false;
-    }
-    Node invocationTargetReceiver = invocation.getTarget().getReceiver();
-    return invocationTargetReceiver instanceof ExplicitThisNode
-        || invocationTargetReceiver instanceof ImplicitThisNode;
+    return null;
   }
 
-  private boolean isGetThreadGroupOnCurrentThread(MethodInvocationNode node) {
-    ExecutableElement method = node.getTarget().getMethod();
-    if (!nameMatches(method, "Thread", "getThreadGroup")) {
+  private static boolean isGetClassLoaderClassOnThisGetClass(MethodInvocationNode node) {
+    if (!isCallTo(node, "Class", "getClassLoader")) {
       return false;
     }
-    Node receiver = node.getTarget().getReceiver();
-    if (!(receiver instanceof MethodInvocationNode)) {
+    MethodInvocationNode getClassCall = receiverCallTo(node, "Object", "getClass");
+    if (getClassCall == null) {
       return false;
     }
-    MethodInvocationNode invocation = (MethodInvocationNode) receiver;
-    if (!nameMatches(invocation.getTarget().getMethod(), "Thread", "currentThread")) {
-      return false;
-    }
-    return true;
+    Node getClassReceiver = getClassCall.getTarget().getReceiver();
+    return getClassReceiver instanceof ExplicitThisNode
+        || getClassReceiver instanceof ImplicitThisNode;
   }
 
-  private boolean isGetSuperclassOnGetClass(MethodInvocationNode node) {
-    ExecutableElement method = node.getTarget().getMethod();
-    if (!nameMatches(method, "Class", "getSuperclass")
-        && !nameMatches(method, "Class", "getGenericSuperclass")) {
-      return false;
-    }
-    Node receiver = node.getTarget().getReceiver();
-    if (!(receiver instanceof MethodInvocationNode)) {
-      return false;
-    }
-    MethodInvocationNode invocation = (MethodInvocationNode) receiver;
-    if (!nameMatches(invocation.getTarget().getMethod(), "Object", "getClass")) {
-      return false;
-    }
-    return true;
+  private static boolean isGetThreadGroupOnCurrentThread(MethodInvocationNode node) {
+    return isCallTo(node, "Thread", "getThreadGroup")
+        && receiverCallTo(node, "Thread", "currentThread") != null;
   }
 
-  private boolean isReflectiveRead(MethodInvocationNode node) {
-    ExecutableElement method = node.getTarget().getMethod();
-    return nameMatches(method, "Field", "get") || nameMatches(method, "Method", "invoke");
+  private static boolean isGetSuperclassOnGetClass(MethodInvocationNode node) {
+    return (isCallTo(node, "Class", "getSuperclass")
+            || isCallTo(node, "Class", "getGenericSuperclass"))
+        && receiverCallTo(node, "Object", "getClass") != null;
+  }
+
+  private static boolean isReflectiveRead(MethodInvocationNode node) {
+    return isCallTo(node, "Field", "get") || isCallTo(node, "Method", "invoke");
   }
 
   private AnnotatedTypeMirror typeWithTopLevelAnnotationsOnly(
@@ -793,6 +746,27 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     AnnotatedTypeMirror type = createType(node.getType(), atypeFactory, /* isDeclaration= */ false);
     type.addAnnotations(annotations);
     return type;
+  }
+
+  /**
+   * Narrows {@code result} to non-null if {@code arg} is null-exclusive in the least convenient
+   * world, or to unspecified nullness if it is null-exclusive only in the most convenient world.
+   * Shared by the two call shapes that narrow a {@code T?}-returning call's result from one of its
+   * own arguments: the {@code Class.cast}/{@code Optional.orElse}/converter family (from argument
+   * 0) and {@code Objects.toString(Object, String)} (from argument 1).
+   */
+  private void narrowResultFromArgument(
+      TransferResult<CFValue, NullSpecStore> result,
+      TransferInput<CFValue, NullSpecStore> input,
+      Node arg) {
+    AnnotatedTypeMirror type = typeWithTopLevelAnnotationsOnly(input, arg);
+    if (atypeFactory.withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(type)) {
+      setResultValueToNonNull(result);
+    } else if (atypeFactory
+        .withMostConvenientWorld()
+        .isNullExclusiveUnderEveryParameterization(type)) {
+      setResultValueOperatorToUnspecified(result);
+    }
   }
 
   @Override
