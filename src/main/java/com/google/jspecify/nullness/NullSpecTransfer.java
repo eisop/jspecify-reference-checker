@@ -512,6 +512,10 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     }
 
     MapType mapType = new MapType(containsKeyOrPutReceiver);
+    if (mapType.mapValueAsDataflowValue == null) {
+      // A raw Map's value type carries no annotations, so createAbstractValue returns null.
+      return false;
+    }
     MethodCall containsKeyOrPutCall = (MethodCall) fromNode(containsKeyOrPutNode);
 
     /*
@@ -571,13 +575,20 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
   }
 
   private void refinePathGetFileNameResultIfDirectoryStreamLoop(
-      MethodInvocationNode pathGetFileNameNode, TransferResult<CFValue, NullSpecStore> input) {
+      MethodInvocationNode pathGetFileNameNode, TransferResult<CFValue, NullSpecStore> result) {
     if (!util.javaNioFileDirectoryStream.isPresent()) {
       // Running with j2cl's limited classpath.
       return;
     }
 
     Tree pathGetFileNameReceiver = pathGetFileNameNode.getTarget().getReceiver().getTree();
+    if (pathGetFileNameReceiver == null) {
+      /*
+       * TODO(cpovirk): Handle the case of a null pathGetFileNameReceiver (probably
+       * ImplicitThisNode). See the analogous case in refineFutureMapGetFromMapContainsKeyOrPut.
+       */
+      return;
+    }
     Element pathGetFileNameReceiverElement = elementFromTree(pathGetFileNameReceiver);
     if (pathGetFileNameReceiverElement == null) {
       return;
@@ -603,14 +614,17 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
         continue;
       }
 
-      input.setResultValue(
+      result.setResultValue(
           analysis.createSingleAnnotationValue(
-              minusNull, input.getResultValue().getUnderlyingType()));
+              minusNull, result.getResultValue().getUnderlyingType()));
+      // Java forbids redeclaring, in a nested scope, a variable already in scope, so at most one
+      // enclosing loop can declare pathGetFileNameReceiverElement: no need to keep looking.
+      break;
     }
   }
 
   private void refineMapGetResultIfKeySetLoop(
-      MethodInvocationNode mapGetNode, TransferResult<CFValue, NullSpecStore> input) {
+      MethodInvocationNode mapGetNode, TransferResult<CFValue, NullSpecStore> result) {
     Tree mapGetReceiver = mapGetNode.getTarget().getReceiver().getTree();
     if (!(mapGetReceiver instanceof ExpressionTree)) {
       /*
@@ -622,13 +636,17 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     ExpressionTree mapGetReceiverExpression = (ExpressionTree) mapGetReceiver;
     Element mapGetArgElement = elementFromTree(mapGetNode.getArgument(0).getTree());
     MapType mapType = new MapType(mapGetReceiver);
+    if (mapType.mapValueAsDataflowValue == null) {
+      // A raw Map's value type carries no annotations, so createAbstractValue returns null.
+      return;
+    }
 
     /*
      * TODO(cpovirk): Benchmark the cost of looking the entire way up the tree path. Maybe we should
      * stop at the first foreach or even the first block of any kind?
      *
      * If performance is bad enough, consider this an additional reason to move this code out of
-     * NullSpecStore and into our TreeAnnotator, as discussed in visitFieldAccess: TreeAnnotator
+     * NullSpecTransfer and into our TreeAnnotator, as discussed in visitFieldAccess: TreeAnnotator
      * could make a single pass over the file to infer the return types of all calls to
      * map.get(...), path.getFileName(), and any other APIs en masse.
      */
@@ -672,7 +690,11 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
         continue;
       }
 
-      input.setResultValue(mapType.mapValueAsDataflowValue);
+      result.setResultValue(mapType.mapValueAsDataflowValue);
+      // Java forbids redeclaring, in a nested scope, a variable already in scope, so at most one
+      // enclosing loop can declare the element mapGetArgElement resolves to: no need to keep
+      // looking.
+      break;
     }
   }
 
@@ -1007,7 +1029,9 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
   }
 
   private static boolean isNullLiteral(Node node) {
-    return node.getTree().getKind() == NULL_LITERAL;
+    // A node the CFG builder synthesized rather than translated has no tree at all.
+    Tree tree = node.getTree();
+    return tree != null && tree.getKind() == NULL_LITERAL;
   }
 
   // TODO(cpovirk): Maybe avoid mutating the result value in place?
