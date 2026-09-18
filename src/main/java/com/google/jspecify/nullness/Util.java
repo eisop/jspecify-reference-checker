@@ -71,7 +71,7 @@ final class Util {
   final Optional<ExecutableElement> annotatedElementGetAnnotationElement;
   final TypeElement javaLangThreadLocalElement;
   final Optional<ExecutableElement> threadLocalInitialValueElement;
-  final Optional<TypeMirror> javaNioFileDrectoryStream;
+  final Optional<TypeMirror> javaNioFileDirectoryStream;
   final Optional<ExecutableElement> pathGetFileNameElement;
   final ExecutableElement mapKeySetElement;
   final ExecutableElement mapContainsKeyElement;
@@ -172,7 +172,7 @@ final class Util {
     javaLangThreadLocalElement = e.getTypeElement("java.lang.ThreadLocal");
     threadLocalInitialValueElement =
         optionalOnlyExecutableWithName(javaLangThreadLocalElement, "initialValue");
-    javaNioFileDrectoryStream =
+    javaNioFileDirectoryStream =
         optionalTypeElement(e, "java.nio.file.DirectoryStream").map(TypeElement::asType);
 
     pathGetFileNameElement =
@@ -196,11 +196,12 @@ final class Util {
     Optional<TypeElement> javaLangReflectAnnotatedElementElement =
         optionalTypeElement(e, "java.lang.reflect.AnnotatedElement");
     annotatedElementIsAnnotationPresentElement =
-        onlyExecutableWithName(javaLangReflectAnnotatedElementElement, "isAnnotationPresent");
+        requiredExecutableIfTypePresent(
+            javaLangReflectAnnotatedElementElement, "isAnnotationPresent");
     annotatedElementGetAnnotationElement =
-        onlyExecutableWithName(javaLangReflectAnnotatedElementElement, "getAnnotation");
+        requiredExecutableIfTypePresent(javaLangReflectAnnotatedElementElement, "getAnnotation");
     converterConvertElement =
-        onlyExecutableWithName(
+        requiredExecutableIfTypePresent(
             optionalTypeElement(e, "com.google.common.base.Converter"), "convert");
     Optional<TypeElement> comGoogleCommonBaseOptionalElement =
         optionalTypeElement(e, "com.google.common.base.Optional");
@@ -287,7 +288,14 @@ final class Util {
     return nameMatches(elementFromUse(tree), clazz, method);
   }
 
-  private static Optional<ExecutableElement> onlyExecutableWithName(
+  /**
+   * Like {@link #onlyExecutableWithName(TypeElement, String)}, but for a possibly-absent {@code
+   * type} (e.g. a class present only on some classpaths, like j2cl's limited one). Absent only if
+   * {@code type} itself is absent -- unlike {@link #optionalOnlyExecutableWithName(TypeElement,
+   * String)}, this still throws if {@code type} is present but has no such method, so it must only
+   * be called where a member being present whenever its declaring type is present is not in doubt.
+   */
+  private static Optional<ExecutableElement> requiredExecutableIfTypePresent(
       Optional<TypeElement> type, String name) {
     return type.map(e -> onlyExecutableWithName(e, name));
   }

@@ -27,6 +27,14 @@ sourceSets {
             ]
         }
     }
+    // See src/samplesOnMainStub/java/org/jspecify/annotations/NullnessUnspecified.java: a stand-in
+    // for the annotation that only the samples-google-prototype-eisop fork defines, so that
+    // conformanceTests can compile ../jspecify/samples against main's jspecify.jar.
+    samplesOnMainStub {
+        java {
+            srcDirs = ['src/samplesOnMainStub/java']
+        }
+    }
 }
 
 repositories {
@@ -174,7 +182,11 @@ tasks.withType(JavaCompile).configureEach {
     options.compilerArgs.addAll(javacExports)
 }
 
-tasks.register('copyJSpecifyJDK', Copy) {
+// A Sync task rather than Copy: Sync deletes destination files that the filter below no longer
+// selects. With Copy, files from an earlier run (e.g. against a different jspecifyJdkHome) linger
+// in the destination, get minimized and included in the jar, and can even break the build when
+// they reference annotations that are not on JavaStubifier's classpath.
+tasks.register('copyJSpecifyJDK', Sync) {
     def srcDir = "${jspecifyJdkHome}/src"
     // The annotated JDK is laid out as an "annotated-jdk" directory containing "src", and
     // "annotated-jdk" needs to be stored at the top level of the resulting .jar file.
@@ -334,7 +346,11 @@ tasks.register('jspecifySamplesTest', Test) {
     inputs.dir(conformanceTests)
 }
 
-tasks.register('unzipConformanceTestSuite', Copy) {
+// A Sync task rather than Copy: Sync deletes destination files that the source zip no longer
+// contains. With Copy, samples from an earlier run against a different jspecify checkout (e.g. a
+// fork branch with extra samples) linger in the destination and get tested alongside the current
+// ones, inflating the conformance report with failures for files that no longer exist upstream.
+tasks.register('unzipConformanceTestSuite', Sync) {
     dependsOn configurations.conformanceTestSuite
     from zipTree(configurations.conformanceTestSuite.singleFile)
     into layout.buildDirectory.dir("conformanceTests")
@@ -349,7 +365,9 @@ tasks.register('conformanceTests', Test) {
     outputs.upToDateWhen { false }
 
     testClassesDirs = files('build/classes/java/test')
-    classpath = sourceSets.test.runtimeClasspath
+    // See sourceSets.samplesOnMainStub above: adds a stand-in for a fork-only annotation that
+    // several samples import, so the samples corpus compiles against main's real jspecify.jar.
+    classpath = sourceSets.test.runtimeClasspath + sourceSets.samplesOnMainStub.output
 
     def conformanceTests = layout.buildDirectory.dir("conformanceTests").get()
 
@@ -386,7 +404,7 @@ tasks.named('check').configure {
     dependsOn('conformanceTests')
 }
 
-tasks.register('deleteTestsBuild') {
+tasks.register('deleteTestsBuild', Delete) {
     delete "${rootDir}/tests/build/"
 }
 clean.dependsOn('deleteTestsBuild')
