@@ -25,6 +25,7 @@ import com.sun.tools.javac.processing.JavacProcessingEnvironment;
 import com.sun.tools.javac.util.Log;
 import java.util.NavigableSet;
 import java.util.TreeSet;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.TypeElement;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
@@ -76,6 +77,17 @@ public final class NullSpecChecker extends BaseTypeChecker {
   @Override
   protected String suppressWarningsString(String messageKey) {
     return "nullness";
+  }
+
+  @Override
+  public boolean shouldSuppressWarnings(Element elt, String errKey) {
+    /*
+     * Suppress CF's "conflicting.defaults" diagnostic. When @NullMarked and @NullUnmarked appear on
+     * the same element, NullSpecVisitor.checkNoConflictingMarkingAnnotations already reports
+     * "conflicting.annotations" at each annotation location, making CF's internal-vocabulary
+     * diagnostic redundant.
+     */
+    return errKey.equals("conflicting.defaults") || super.shouldSuppressWarnings(elt, errKey);
   }
 
   @Override
