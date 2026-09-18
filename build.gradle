@@ -7,11 +7,11 @@ plugins {
     id 'java'
     id 'maven-publish'
 
-    id 'com.diffplug.spotless' version '8.9.0'
+    id 'com.diffplug.spotless' version '8.10.0'
     id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
     id 'net.ltgt.errorprone' version '5.1.0'
     // To show task list as a tree, run: ./gradlew <taskname> taskTree
-    id 'com.dorongold.task-tree' version '4.0.1'
+    id 'com.dorongold.task-tree' version '4.0.2'
 }
 
 // Nexus Publish plugin requires a group/version at the root project.
