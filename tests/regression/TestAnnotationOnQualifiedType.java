@@ -17,9 +17,9 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 /**
- * An annotation written on a qualified type must be reported at its illegal location whether or not
- * the type is parameterized: the annotation, and the qualified-name shape that identifies an outer
- * type, both belong to the base type of a ParameterizedTypeTree rather than to that tree itself.
+ * Tests that illegal annotations on qualified types are reported whether or not the type is
+ * parameterized. Outer-type qualifiers and annotations belong to the base type of a {@code
+ * ParameterizedTypeTree} rather than the tree itself.
  */
 @NullMarked
 class TestAnnotationOnQualifiedType {

@@ -477,16 +477,12 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       checkNoNullnessAnnotations(tree, annotations, "enum.constant.annotated");
     } else if (IMPLEMENTATION_VARIABLE_KINDS.contains(kind)) {
       /*
-       * A local's own type-use annotation lands in exactly one of two places: on the variable's
-       * modifiers when it is written first (`@Nullable String s`, per JLS 9.7.4), or on the type
-       * tree when a package or outer-type qualifier precedes it (`java.util.@Nullable List<String>
-       * s`). Check both; each is empty in the shape where the other applies.
+       * A local's type-use annotation appears on its modifiers when written first (`@Nullable
+       * String s`, per JLS 9.7.4), or on the type tree when preceded by a package or outer-type
+       * qualifier (`java.util.@Nullable List<String> s`). Check both.
        *
-       * (Element.getAnnotationMirrors would be the obvious way to ask for "the variable type
-       * itself," but it does not report type-use annotations at all.)
-       *
-       * An array's own annotation is instead reached through its component types, so it needs the
-       * separate walk below rather than either of these.
+       * (Element.getAnnotationMirrors does not report type-use annotations. Array annotations are
+       * reached through component types and handled separately below.)
        */
       if (tree.getType() instanceof ArrayTypeTree) {
         checkNoNullnessAnnotationsOnArrayItself(tree, "local.variable.annotated");

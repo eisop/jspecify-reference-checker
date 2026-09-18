@@ -490,10 +490,8 @@ final class NullSpecAnnotatedTypeFactory
         return true;
       }
       /*
-       * The final disjunct is reflexivity, which a QualifierHierarchy must provide and which the
-       * two preceding ones do not cover for parametricNull. (The unspecified/unspecified case is
-       * the one qualifier pair whose reflexivity is deliberately world-dependent, and both worlds'
-       * answers for it were already returned above.)
+       * Provide reflexivity, which preceding checks do not cover for parametricNull. (The
+       * unspecified/unspecified pair is deliberately world-dependent and handled above.)
        */
       return areSame(subAnno, minusNull)
           || areSame(superAnno, unionNull)
