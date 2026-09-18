@@ -79,7 +79,9 @@ import org.checkerframework.common.basetype.TypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
 import org.checkerframework.framework.type.AnnotatedTypeParameterBounds;
+import org.checkerframework.framework.util.typeinference8.InferenceResult;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
@@ -235,6 +237,55 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   private static boolean isWildcardKind(Tree.Kind kind) {
     return kind == UNBOUNDED_WILDCARD || kind == EXTENDS_WILDCARD || kind == SUPER_WILDCARD;
+  }
+
+  /**
+   * Suppresses spurious inference failures caused by strict-mode subtyping (where {@code
+   * NullnessUnspecified <: NullnessUnspecified} is false).
+   *
+   * <p>Inference errors are suppressed only when:
+   *
+   * <ul>
+   *   <li>All type parameters have null-inclusive (top) upper bounds,
+   *   <li>The call has at most as many arguments as type parameters (ruling out multi-argument
+   *       conflicts), and
+   *   <li>No argument is a lambda or method reference.
+   * </ul>
+   */
+  @Override
+  protected void reportTypeArgumentInferenceFailure(
+      ExpressionTree tree, AnnotatedExecutableType methodType, InferenceResult inferenceResult) {
+    if (!isSpuriousInferenceFailure(tree, methodType)) {
+      super.reportTypeArgumentInferenceFailure(tree, methodType, inferenceResult);
+    }
+  }
+
+  private boolean isSpuriousInferenceFailure(
+      ExpressionTree tree, AnnotatedExecutableType methodType) {
+    // All type parameter bounds must be null-inclusive (top).
+    for (AnnotatedTypeVariable typeVar : methodType.getTypeVariables()) {
+      if (!atypeFactory.isUpperBoundNullInclusive(typeVar)) {
+        return false;
+      }
+    }
+    List<? extends ExpressionTree> args;
+    if (tree instanceof MethodInvocationTree) {
+      args = ((MethodInvocationTree) tree).getArguments();
+    } else if (tree instanceof NewClassTree) {
+      args = ((NewClassTree) tree).getArguments();
+    } else {
+      return false;
+    }
+    if (args.size() > methodType.getTypeVariables().size()) {
+      return false;
+    }
+    for (ExpressionTree arg : args) {
+      Tree.Kind argKind = arg.getKind();
+      if (argKind == Tree.Kind.LAMBDA_EXPRESSION || argKind == Tree.Kind.MEMBER_REFERENCE) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @Override
