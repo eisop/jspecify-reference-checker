@@ -209,37 +209,18 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   }
 
   /**
-   * Returns {@code false} for a type argument that is the capture of a wildcard that was written in
-   * source, skipping the recheck that the argument is within the type parameter's bounds.
+   * Returns {@code false} for a type argument that is the capture of a source-written wildcard,
+   * skipping the redundant bounds check.
    *
-   * <p>The Checker Framework capture-converts a parameterized type before checking it (see {@code
-   * BaseTypeValidator.visitParameterizedType}). A captured wildcard's upper bound is the greatest
-   * lower bound of the wildcard's extends bound and the type parameter's bound, so by construction
-   * it satisfies the type parameter's bound: the JLS never rejects a wildcard type argument for a
-   * bound mismatch. Rechecking that tautology here is harmful under this checker's nonstandard
-   * subtyping: in "strict mode," {@code unspecified <: unspecified} does not hold (it is "not
-   * enough information"), so the recheck rejects, for example, {@code A<?>} where the type
-   * parameter's bound has unspecified nullness. Skipping the recheck does not lose real checks:
-   * mismatches between a wildcard and its type parameter's bound are the containment checks that
-   * {@code BaseTypeValidator.visitParameterizedType} performs separately.
+   * <p>Checker Framework capture-converts parameterized types before validation (see {@code
+   * BaseTypeValidator.visitParameterizedType}). A captured wildcard's upper bound is the GLB of the
+   * wildcard's extends bound and the type parameter's bound, satisfying the bound by construction.
+   * Rechecking this under our subtyping rules falsely rejects types like {@code A<?>} in strict
+   * mode when bounds have unspecified nullness. Actual wildcard-bound mismatches are already
+   * checked via wildcard containment in {@code BaseTypeValidator}.
    *
-   * <p>Method and constructor invocations are unaffected: a wildcard cannot be written as an
-   * explicit method or constructor type argument, so {@code typeArg} is never the capture of a
-   * source-written wildcard for those call sites.
-   *
-   * <p>Checking {@code typeArg} alone, without also inspecting {@code typeArgTree}, is enough:
-   * capture conversion (JLS 5.1.10) only ever produces a fresh type variable from a wildcard, so a
-   * captured type variable at this position implies the corresponding tree -- if present -- was a
-   * wildcard.
-   *
-   * @param toptree unused; the tree for error reporting, only used for inferred type arguments
-   * @param bounds unused; the bounds of the type parameter corresponding to {@code typeArg}
-   * @param typeArg the type argument from the type or method invocation
-   * @param typeArgTree the type argument as a tree, or {@code null} if the type argument was
-   *     inferred
-   * @param typeOrMethodName unused; the name of the type or method being checked
-   * @param paramName unused; the name of the type parameter corresponding to {@code typeArg}
-   * @return {@code false} if {@code typeArg} is the capture of a source-written wildcard
+   * <p>Captured type variables only arise from wildcards (JLS 5.1.10), so checking whether {@code
+   * typeArg} is a captured type variable is sufficient.
    */
   @Override
   protected boolean shouldCheckTypeArgument(
