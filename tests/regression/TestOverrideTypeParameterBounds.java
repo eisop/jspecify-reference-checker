@@ -2,57 +2,25 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A generic method whose own type parameter's bound differs -- narrower (more definitely non-null)
- * or wider (more definitely nullable) -- from the corresponding type parameter's bound on the
- * method it overrides.
+ * Tests for generic method overrides where a type-parameter bound differs (narrower or wider) from
+ * the overridden method.
  *
- * <p>checker-framework's {@code BaseTypeVisitor.OverrideChecker} enforces this with two independent
- * rules that this checker does not try to deduplicate against each other (matching
- * checker-framework's own {@code checker/tests/nullness/OverrideTypeParamBound.java}, which accepts
- * the same overlap for CF's built-in Nullness Checker):
+ * <p>Two levels of checks run independently:
  *
  * <ul>
- *   <li>{@code isTypeParameterBoundOverrideValid} (checker-framework's sound-by-default
- *       declaration-level check, unmodified by this checker): compares the two type parameters'
- *       declared bounds directly, regardless of whether, or where, the type parameter is used.
- *       Since {@link #atypeFactory}'s upper bound alone determines a bare type variable's nullness
- *       in this checker (a declared <em>lower</em> bound is not a feature JSpecify uses), this
- *       reduces to: the overriding upper bound must not be <em>narrower</em> (more definitely
- *       non-null) than the overridden one. <b>Widening is accepted</b> -- see checker-framework's
- *       own {@code SubWidenUpperReturn}/{@code SubImplicitBound} for why that is sound regardless
- *       of position. A mismatch reports {@code override.typaram.invalid}.
- *   <li>{@code NullSpecOverrideChecker#isParameterOverrideValid} (this checker's own addition,
- *       unrelated to the rule above): requires full parameter <em>invariance</em>, not just
- *       checker-framework's default contravariance. For a <em>bare</em> parameter occurrence of a
- *       type parameter whose own bound differs at all -- narrower or wider -- this independently
- *       fails and reports {@code override.param.invalid}, regardless of what the declaration-level
- *       rule above decides for that same mismatch.
- * </ul>
- *
- * <p>Two more checker-framework mechanics shape the table below:
- *
- * <ul>
- *   <li>A bare <em>return</em> occurrence is covariant, not invariant, and checker-framework's
- *       {@code testTypevarContainment} fallback (which {@code isReturnOverrideValid} and {@code
- *       isParameterOverrideValid} both fall back to when the plain subtype check fails) now uses
- *       the same containment direction as the declaration-level rule. So a bare return occurrence
- *       never independently reports a widened upper bound (sound, matching the declaration-level
- *       rule) and never independently reports a narrowed one either (ordinary covariance already
- *       accepts a narrower return type) -- only {@code override.typaram.invalid} ever catches
- *       narrowing there, and nothing catches widening.
- *   <li>{@code testTypevarContainment} only ever applies to a type variable occurring bare --
- *       {@code inner.getKind() == TypeKind.TYPEVAR}, checked before anything else -- so it never
- *       rescues an <em>array</em> (or varargs, which desugars to one) occurrence. An array
- *       occurrence's ordinary subtype check therefore independently fails for <em>any</em> bound
- *       difference, in either direction, with no fallback to save it; only {@code
- *       override.typaram.invalid}'s widening tolerance is direction-sensitive, so a narrowed array
- *       gets both diagnostics but a widened one gets only the array-specific one.
- *   <li>{@code NullSpecAnnotatedTypeFactory.NullSpecEqualityComparer#areNestedTypesEqual}
- *       deliberately never recurses into a type variable's bounds, so a type parameter used only
- *       <em>nested</em> inside a parameterized type argument (e.g. {@code Sequence<T>}) is
- *       structurally invisible to every occurrence-level check, in both parameter and return
- *       position -- only {@code override.typaram.invalid} can ever report it, and (per the first
- *       bullet) only for narrowing.
+ *   <li><b>Declaration-level</b> ({@code isTypeParameterBoundOverrideValid}): the overriding
+ *       type-parameter upper bound must not be narrower than the overridden bound. Widening is
+ *       permitted. Mismatches report {@code override.typaram.invalid}.
+ *   <li><b>Occurrence-level</b>:
+ *       <ul>
+ *         <li>Bare parameters enforce invariance, reporting {@code override.param.invalid} if
+ *             bounds differ in either direction.
+ *         <li>Bare returns are covariant (narrowing is accepted by the return check and caught only
+ *             at the declaration level; widening is accepted by both).
+ *         <li>Arrays have no type-variable containment fallback, failing for any bound difference.
+ *         <li>Nested type arguments (e.g. {@code Sequence<T>}) do not inspect bounds during
+ *             occurrence checks, so only the declaration-level check reports narrowing.
+ *       </ul>
  * </ul>
  */
 @NullMarked
