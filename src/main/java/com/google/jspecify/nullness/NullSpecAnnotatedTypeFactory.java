@@ -1936,7 +1936,7 @@ final class NullSpecAnnotatedTypeFactory
                 "edu.umd.cs.findbugs.annotations.CheckForNull",
                 "edu.umd.cs.findbugs.annotations.Nullable",
                 "edu.umd.cs.findbugs.annotations.PossiblyNull",
-               "edu.umd.cs.findbugs.annotations.UnknownNullnes",
+                "edu.umd.cs.findbugs.annotations.UnknownNullnes",
                 "io.micrometer.core.lang.Nullable",
                 "io.micronaut.core.annotation.Nullable",
                 "io.reactivex.annotations.Nullable",
