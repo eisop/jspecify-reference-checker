@@ -900,7 +900,14 @@ final class NullSpecAnnotatedTypeFactory
       }
       AnnotationMirror a1 = type1.getAnnotationInHierarchy(unionNull);
       AnnotationMirror a2 = type2.getAnnotationInHierarchy(unionNull);
-      if (a1 == a2) {
+      /*
+       * Deliberately `==`: never wrong, just a fast path for "both null" or "both the same
+       * instance," with `areSame` below covering two distinct instances of the same annotation.
+       * `a1 == null && a2 == null` would only drop the same-instance fast path, not fix anything.
+       */
+      @SuppressWarnings("ReferenceEquality")
+      boolean sameAnnotationMirror = a1 == a2;
+      if (sameAnnotationMirror) {
         return true;
       }
       if (a1 != null && a2 != null && areSame(a1, a2)) {

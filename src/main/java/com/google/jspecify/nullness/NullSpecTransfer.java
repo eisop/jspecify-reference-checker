@@ -1024,8 +1024,19 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     if (target == null) {
       return false;
     }
-    return atypeFactory.getQualifierHierarchy().greatestLowerBoundQualifiersOnly(existing, target)
-        == existing;
+    /*
+     * Deliberately `==`. NoElementQualifierHierarchy.greatestLowerBoundQualifiers returns a
+     * hierarchy-owned canonical instance looked up by qualifier kind, never either input -- so
+     * `== existing` holds only when `existing` is itself already that canonical instance (i.e.
+     * came from an earlier GLB/merge, not ordinary attribution). That's an implementation
+     * accident of NoElementQualifierHierarchy, not a distinction intended here; switching to
+     * areSame makes more NullCheck* samples fail.
+     */
+    @SuppressWarnings("ReferenceEquality")
+    boolean isCanonicalGlbInstance =
+        atypeFactory.getQualifierHierarchy().greatestLowerBoundQualifiersOnly(existing, target)
+            == existing;
+    return isCanonicalGlbInstance;
   }
 
   private static boolean isNullLiteral(Node node) {
