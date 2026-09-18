@@ -2,9 +2,8 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A capture whose upper bound is itself a type variable is only nullable relative to that type
- * variable, not definitely nullable -- unlike the capture of {@code ? extends SomeNullableType},
- * which {@code isCaptureOfDefinitelyNullableExtendsWildcard} exists to project as UNION_NULL.
+ * A capture whose upper bound is a type variable is nullable only relative to that type variable,
+ * not definitely nullable (unlike {@code ? extends SomeNullableType}).
  */
 @NullMarked
 abstract class TestCaptureOfWildcardBoundByTypeVariable {
