@@ -88,6 +88,7 @@ public final class ConformanceTest {
           "-AassumePure",
           "-Adetailedmsgtext",
           "-AcheckImpl",
+          "-AcheckCastElementType",
           "-AsuppressWarnings=conditional",
           "-Astrict",
           "-AshowTypes");
