@@ -167,6 +167,7 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
           "assignment.type.incompatible",
           "atomicreference.must.include.null",
           "cast.unsafe",
+          "field.uninitialized",
           "lambda.param.type.incompatible",
           "methodref.receiver.bound.invalid",
           "methodref.receiver.invalid",
