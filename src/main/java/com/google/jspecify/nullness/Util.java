@@ -41,7 +41,6 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.SimpleAnnotationValueVisitor8;
 import javax.lang.model.util.Types;
-import org.checkerframework.framework.qual.TypeUseLocation;
 import org.checkerframework.javacutil.AnnotationBuilder;
 
 final class Util {
@@ -263,10 +262,6 @@ final class Util {
     return element.getSimpleName().contentEquals(name);
   }
 
-  static boolean nameMatches(AnnotationMirror m, String name) {
-    return nameMatches(m.getAnnotationType().asElement(), name);
-  }
-
   /*
    * NOTE: This DOES NOT match methods that OVERRIDE the given method. For example,
    * `nameMatches(method, "Map", "get")` will NOT match a call that is statically resolved to
@@ -371,14 +366,6 @@ final class Util {
         throw new IllegalArgumentException(type + "." + name);
     }
   }
-
-  static final Set<TypeUseLocation> IMPLEMENTATION_VARIABLE_LOCATIONS =
-      unmodifiableSet(
-          new HashSet<>(
-              asList(
-                  TypeUseLocation.LOCAL_VARIABLE,
-                  TypeUseLocation.RESOURCE_VARIABLE,
-                  TypeUseLocation.EXCEPTION_PARAMETER)));
 
   static final Set<ElementKind> IMPLEMENTATION_VARIABLE_KINDS =
       unmodifiableSet(

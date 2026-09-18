@@ -1009,7 +1009,33 @@ final class NullSpecAnnotatedTypeFactory
       return areEqual(type1, type2);
     }
 
+    /**
+     * Returns whether {@code type1} and {@code type2} are the same type in our nullness hierarchy.
+     *
+     * <p>Used by {@link DefaultTypeHierarchy#isContainedBy} for invariant type-argument comparison,
+     * requiring a full structural check:
+     *
+     * <ul>
+     *   <li>{@link #arePrimaryNullnessesEqual}: compares primary nullness operators, handling
+     *       unspecified nullness and world-dependent rules.
+     *   <li>{@link #areNestedTypesEqual}: recurses into nested types (array components, type
+     *       arguments, wildcard bounds).
+     * </ul>
+     *
+     * <p>We cannot delegate recursion to the supermethod because its structural visitors use {@code
+     * arePrimaryAnnosEqual} (which lacks our nullness rules) and throw {@code BugInCF} on unhandled
+     * type combinations.
+     */
     private boolean areEqual(AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
+      return arePrimaryNullnessesEqual(type1, type2) && areNestedTypesEqual(type1, type2);
+    }
+
+    /**
+     * Returns whether {@code type1} and {@code type2} have the same primary nullness operator.
+     * Nested types are checked separately by {@link #areNestedTypesEqual}.
+     */
+    private boolean arePrimaryNullnessesEqual(
+        AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
       /*
        * Eventually, we'll test the spec definition: "type1 is a subtype of type2 and vice versa."
        * However, we perform some other tests first. Why?
@@ -1078,12 +1104,72 @@ final class NullSpecAnnotatedTypeFactory
       /*
        * TODO(cpovirk): Do we care about the base type, or is looking at annotations enough?
        * super.visitDeclared_Declared has a TODO with a similar question. Err, presumably normal
-       * Java type-checking has done that job. A more interesting question may be why we don't look
-       * at type args. The answer might be simply: "That's the contract, even though it is
-       * surprising, given the names of the class and its methods." (Granted, the docs of
-       * super.visitDeclared_Declared also say that it checks that "The types are of the same
-       * class/interfaces," so the contract isn't completely clear.)
+       * Java type-checking has done that job. (Nested types are handled by areNestedTypesEqual.)
        */
+    }
+
+    /**
+     * Returns whether types nested inside {@code type1} and {@code type2} (array components, type
+     * arguments, wildcard bounds) are equal via recursive {@link #areEqual} calls. Returns true if
+     * there are no nested types.
+     *
+     * <p>We deliberately do not recurse into type-variable bounds (nor intersection types):
+     * corresponding type variables are already the same type, and our non-standard type-variable
+     * substitution rules make bound comparison unsafe (e.g. producing spurious {@code
+     * argument.type.incompatible} errors in {@code TestInferredUnspecTypeArgument}).
+     */
+    private boolean areNestedTypesEqual(AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
+      if (type1.getKind() == ARRAY && type2.getKind() == ARRAY) {
+        return checkOrAreEqual(
+            ((AnnotatedArrayType) type1).getComponentType(),
+            ((AnnotatedArrayType) type2).getComponentType());
+      }
+      if (type1.getKind() == DECLARED && type2.getKind() == DECLARED) {
+        List<AnnotatedTypeMirror> args1 = ((AnnotatedDeclaredType) type1).getTypeArguments();
+        List<AnnotatedTypeMirror> args2 = ((AnnotatedDeclaredType) type2).getTypeArguments();
+        if (args1.size() != args2.size()) {
+          // One of the types is raw, so it has no type arguments to compare.
+          return true;
+        }
+        return allNestedEqual(type1, type2, args1, args2);
+      }
+      if (type1.getKind() == WILDCARD && type2.getKind() == WILDCARD) {
+        AnnotatedWildcardType wildcard1 = (AnnotatedWildcardType) type1;
+        AnnotatedWildcardType wildcard2 = (AnnotatedWildcardType) type2;
+        if (wildcard1.isTypeArgOfRawType() || wildcard2.isTypeArgOfRawType()) {
+          // Hope for the best, as isNullnessSubtype does for such wildcards.
+          return true;
+        }
+        return allNestedEqual(
+            type1,
+            type2,
+            asList(wildcard1.getExtendsBound(), wildcard1.getSuperBound()),
+            asList(wildcard2.getExtendsBound(), wildcard2.getSuperBound()));
+      }
+      return true;
+    }
+
+    /**
+     * Returns whether {@code nested1} and {@code nested2} are equal pairwise. Records an optimistic
+     * result in {@link #visitHistory} before recursing to prevent infinite recursion on recursive
+     * types (e.g. {@code Enum<E extends Enum<E>>}), matching {@link
+     * StructuralEqualityComparer#visitDeclared_Declared}.
+     */
+    private boolean allNestedEqual(
+        AnnotatedTypeMirror type1,
+        AnnotatedTypeMirror type2,
+        List<AnnotatedTypeMirror> nested1,
+        List<AnnotatedTypeMirror> nested2) {
+      visitHistory.put(type1, type2, /* hierarchy= */ unionNull, true);
+      boolean result = true;
+      for (int i = 0; i < nested1.size(); i++) {
+        if (!checkOrAreEqual(nested1.get(i), nested2.get(i))) {
+          result = false;
+          break;
+        }
+      }
+      visitHistory.put(type1, type2, /* hierarchy= */ unionNull, result);
+      return result;
     }
   }
 
