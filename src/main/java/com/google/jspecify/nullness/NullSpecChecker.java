@@ -42,10 +42,9 @@ import org.checkerframework.framework.source.SupportedOptions;
  *   <li>"showTypes": Whether to output type information for the conformance test suite.
  * </ol>
  *
- * <p>This checker's test harnesses additionally pass CF's own {@code -AcheckCastElementType}, which
- * extends the cast-safety check past a cast's primary qualifier into its nested type arguments.
- * That option is declared by {@code SourceChecker}, not here, and it is not hardcoded on because it
- * requires a Checker Framework new enough to check a downcast without crashing.
+ * <p>Test harnesses also pass Checker Framework's {@code -AcheckCastElementType} (declared by
+ * {@code SourceChecker}), which extends cast-safety checks to nested type arguments. It is not
+ * enabled by default to avoid requiring newer Checker Framework versions for all users.
  */
 @SupportedOptions({"strict", "checkImpl", "showTypes"})
 public final class NullSpecChecker extends BaseTypeChecker {
