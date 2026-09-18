@@ -1936,11 +1936,7 @@ final class NullSpecAnnotatedTypeFactory
                 "edu.umd.cs.findbugs.annotations.CheckForNull",
                 "edu.umd.cs.findbugs.annotations.Nullable",
                 "edu.umd.cs.findbugs.annotations.PossiblyNull",
-                // Not edu.umd.cs.findbugs.annotations.UnknownNullness: unlike the entries above,
-                // it means "unspecified," not "nullable" -- it doesn't belong in this list, and
-                // there's no analogous NULLNESS_OPERATOR_UNSPECIFIED_ANNOTATIONS list it could go
-                // in instead (org.jspecify.annotations.NullnessUnspecified is the only alias for
-                // that operator).
+               "edu.umd.cs.findbugs.annotations.UnknownNullnes",
                 "io.micrometer.core.lang.Nullable",
                 "io.micronaut.core.annotation.Nullable",
                 "io.reactivex.annotations.Nullable",
