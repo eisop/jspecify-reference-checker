@@ -29,6 +29,7 @@ import static org.checkerframework.javacutil.TreeUtils.annotationsFromTypeAnnota
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
+import static org.checkerframework.javacutil.TreeUtils.typeOf;
 import static org.checkerframework.javacutil.TypesUtils.isPrimitive;
 
 import com.sun.source.tree.AnnotatedTypeTree;
@@ -56,6 +57,7 @@ import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
+import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
@@ -333,7 +335,22 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitIf(tree, p);
   }
 
-  // TODO: binary, unary, compoundassign, typecast, ...
+  @Override
+  public Void visitTypeCast(TypeCastTree tree, Void p) {
+    /*
+     * Casting a reference to a primitive type applies unboxing (JLS 5.1.8), throwing NPE if the
+     * reference is null. CF's visitTypeCast only issues a `cast.unsafe` warning, which does not
+     * report the expected nullness error. Require the operand to be null-exclusive (via
+     * ensureNonNull) when casting to a primitive. Checking `typeOf(tree.getType())` handles
+     * primitive types wrapped in AnnotatedTypeTree (e.g. `(@Nullable int) obj`).
+     */
+    if (isPrimitive(typeOf(tree.getType()))) {
+      ensureNonNull(tree.getExpression());
+    }
+    return super.visitTypeCast(tree, p);
+  }
+
+  // TODO: binary, unary, compoundassign, ...
 
   @Override
   public Void visitMethodInvocation(MethodInvocationTree tree, Void p) {
