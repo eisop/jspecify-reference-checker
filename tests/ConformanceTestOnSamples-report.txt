@@ -1,4 +1,4 @@
-# 1,263 pass; 49 fail; 1,312 total; 96.3% score
+# 1,267 pass; 45 fail; 1,312 total; 96.6% score
 # (Note: The total includes 'optional error' assertions -- not_enough_information, conflicting_annotations, intrinsically_not_nullable, and unrecognized_location -- which never count toward pass/fail, since a conformant tool is never wrong to skip them. not_enough_information also never prints its own line below: the spec permits either an explicit warning or silence there equally, so there's no 'right' choice to nudge toward. The other three -- cases where an annotation lands somewhere the spec gives no meaning, and this checker specifically aims to flag them all -- do print, as PASS when backed by a diagnostic and MISS when not; MISS is not a failure, just a nudge to check whether this checker meant to report something there.)
 PASS: AnnotatedInnerOfNonParameterized.java:31:jspecify_nullness_intrinsically_not_nullable
 PASS: AnnotatedInnerOfNonParameterized.java:35:jspecify_nullness_intrinsically_not_nullable
@@ -148,7 +148,7 @@ PASS: ContainmentSuper.java: no unexpected facts
 PASS: ContainmentSuperVsExtends.java:24:jspecify_nullness_mismatch
 PASS: ContainmentSuperVsExtends.java: no unexpected facts
 FAIL: ContainmentSuperVsExtendsSameType.java:23:jspecify_nullness_mismatch
-FAIL: ContainmentSuperVsExtendsSameType.java: no unexpected facts
+PASS: ContainmentSuperVsExtendsSameType.java: no unexpected facts
 PASS: ContravariantReturns.java:30:jspecify_nullness_mismatch
 PASS: ContravariantReturns.java:34:jspecify_nullness_mismatch
 PASS: ContravariantReturns.java:38:jspecify_nullness_mismatch
@@ -398,9 +398,9 @@ PASS: SameTypeTypeVariable.java: no unexpected facts
 PASS: SuperNullableForNonNullableTypeParameter.java:29:jspecify_nullness_mismatch
 PASS: SuperNullableForNonNullableTypeParameter.java: no unexpected facts
 PASS: SuperObject.java:33:jspecify_nullness_mismatch
-FAIL: SuperObject.java: no unexpected facts
+PASS: SuperObject.java: no unexpected facts
 PASS: SuperObjectUnionNull.java: no unexpected facts
-FAIL: SuperObjectUnspec.java: no unexpected facts
+PASS: SuperObjectUnspec.java: no unexpected facts
 FAIL: SuperSameType.java:39:jspecify_nullness_mismatch
 FAIL: SuperSameType.java:53:jspecify_nullness_mismatch
 PASS: SuperSameType.java: no unexpected facts
@@ -426,7 +426,7 @@ PASS: TypeArgumentOfTypeVariableBound.java:57:jspecify_nullness_mismatch
 PASS: TypeArgumentOfTypeVariableBound.java: no unexpected facts
 PASS: TypeArgumentOfWildcardBound.java:37:jspecify_nullness_mismatch
 PASS: TypeArgumentOfWildcardBound.java:58:jspecify_nullness_mismatch
-FAIL: TypeArgumentOfWildcardBound.java: no unexpected facts
+PASS: TypeArgumentOfWildcardBound.java: no unexpected facts
 PASS: TypeVariableMinusNullVsTypeVariable.java:30:jspecify_nullness_mismatch
 FAIL: TypeVariableMinusNullVsTypeVariable.java:32:jspecify_nullness_mismatch
 PASS: TypeVariableMinusNullVsTypeVariable.java:52:jspecify_nullness_mismatch

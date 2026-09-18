@@ -1,4 +1,4 @@
-# 109 pass; 8 fail; 117 total; 93.2% score
+# 115 pass; 2 fail; 117 total; 98.3% score
 # (Note: The total includes 'optional error' assertions -- not_enough_information, conflicting_annotations, intrinsically_not_nullable, and unrecognized_location -- which never count toward pass/fail, since a conformant tool is never wrong to skip them. not_enough_information also never prints its own line below: the spec permits either an explicit warning or silence there equally, so there's no 'right' choice to nudge toward. The other three -- cases where an annotation lands somewhere the spec gives no meaning, and this checker specifically aims to flag them all -- do print, as PASS when backed by a diagnostic and MISS when not; MISS is not a failure, just a nudge to check whether this checker meant to report something there.)
 PASS: Basic.java:28:test:expression-type:Object?:nullable
 PASS: Basic.java:28:test:sink-type:Object!:return
@@ -31,14 +31,14 @@ PASS: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java:Nullable 
 PASS: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java:NonNull on bounded type parameter on class:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java:NonNull on annotated-bounded type parameter on class:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java:Nullable on annotated-bounded type parameter on class:test:irrelevant-annotation:Nullable
-FAIL: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java: no unexpected facts
+PASS: irrelevantannotations/notnullmarked/AnnotatedTypeParameters.java: no unexpected facts
 PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java:Nullable on unbounded wildcard:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java:NonNull on unbounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java:Nullable on bounded wildcard:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java:NonNull on bounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java:NonNull on annotated-bounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java:Nullable on annotated-bounded wildcard:test:irrelevant-annotation:Nullable
-FAIL: irrelevantannotations/notnullmarked/AnnotatedWildcards.java: no unexpected facts
+PASS: irrelevantannotations/notnullmarked/AnnotatedWildcards.java: no unexpected facts
 PASS: irrelevantannotations/notnullmarked/Other.java:Nullable local variable object:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/notnullmarked/Other.java:NonNull local variable object:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/notnullmarked/Other.java:Nullable local variable array:test:irrelevant-annotation:Nullable
@@ -63,14 +63,14 @@ PASS: irrelevantannotations/nullmarked/AnnotatedTypeParameters.java:Nullable on 
 PASS: irrelevantannotations/nullmarked/AnnotatedTypeParameters.java:NonNull on bounded type parameter on class:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullmarked/AnnotatedTypeParameters.java:NonNull on annotated-bounded type parameter on class:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullmarked/AnnotatedTypeParameters.java:Nullable on annotated-bounded type parameter on class:test:irrelevant-annotation:Nullable
-FAIL: irrelevantannotations/nullmarked/AnnotatedTypeParameters.java: no unexpected facts
+PASS: irrelevantannotations/nullmarked/AnnotatedTypeParameters.java: no unexpected facts
 PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java:Nullable on unbounded wildcard:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java:NonNull on unbounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java:Nullable on bounded wildcard:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java:NonNull on bounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java:NonNull on annotated-bounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java:Nullable on annotated-bounded wildcard:test:irrelevant-annotation:Nullable
-FAIL: irrelevantannotations/nullmarked/AnnotatedWildcards.java: no unexpected facts
+PASS: irrelevantannotations/nullmarked/AnnotatedWildcards.java: no unexpected facts
 PASS: irrelevantannotations/nullmarked/Other.java:Nullable local variable object:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/nullmarked/Other.java:NonNull local variable object:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullmarked/Other.java:Nullable local variable array:test:irrelevant-annotation:Nullable
@@ -96,14 +96,14 @@ PASS: irrelevantannotations/nullunmarked/AnnotatedTypeParameters.java:Nullable o
 PASS: irrelevantannotations/nullunmarked/AnnotatedTypeParameters.java:NonNull on bounded type parameter on class:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullunmarked/AnnotatedTypeParameters.java:NonNull on annotated-bounded type parameter on class:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullunmarked/AnnotatedTypeParameters.java:Nullable on annotated-bounded type parameter on class:test:irrelevant-annotation:Nullable
-FAIL: irrelevantannotations/nullunmarked/AnnotatedTypeParameters.java: no unexpected facts
+PASS: irrelevantannotations/nullunmarked/AnnotatedTypeParameters.java: no unexpected facts
 PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java:Nullable on unbounded wildcard:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java:NonNull on unbounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java:Nullable on bounded wildcard:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java:NonNull on bounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java:NonNull on annotated-bounded wildcard:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java:Nullable on annotated-bounded wildcard:test:irrelevant-annotation:Nullable
-FAIL: irrelevantannotations/nullunmarked/AnnotatedWildcards.java: no unexpected facts
+PASS: irrelevantannotations/nullunmarked/AnnotatedWildcards.java: no unexpected facts
 PASS: irrelevantannotations/nullunmarked/Other.java:Nullable local variable object:test:irrelevant-annotation:Nullable
 PASS: irrelevantannotations/nullunmarked/Other.java:NonNull local variable object:test:irrelevant-annotation:NonNull
 PASS: irrelevantannotations/nullunmarked/Other.java:Nullable local variable array:test:irrelevant-annotation:Nullable

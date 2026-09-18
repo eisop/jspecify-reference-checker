@@ -71,7 +71,6 @@ import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
-import javax.lang.model.util.Types;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.flow.CFAbstractAnalysis;
 import org.checkerframework.framework.flow.CFValue;
@@ -538,10 +537,11 @@ final class NullSpecAnnotatedTypeFactory
 
   @Override
   protected TypeHierarchy createTypeHierarchy() {
+    // Same arguments the supermethod passes; only the subclass is ours.
     return new NullSpecTypeHierarchy(
         checker,
         getQualifierHierarchy(),
-        checker.getBooleanOption("ignoreRawTypeArguments", true),
+        ignoreRawTypeArguments,
         checker.hasOption("invariantArrays"));
   }
 
@@ -1363,13 +1363,12 @@ final class NullSpecAnnotatedTypeFactory
     }
 
     private boolean isAnyOf(TypeMirror actual, TypeMirror a, TypeMirror b) {
-      Types typeUtils = analysis.getTypes();
       /*
        * TODO(cpovirk): Eliminate null permissiveness by accepting a Collection<TypeMirror> and just
        * not inserting types into it unless they're available on this compilation's classpath.
        */
-      return (a != null && typeUtils.isSameType(actual, a))
-          || (b != null && typeUtils.isSameType(actual, b));
+      return (a != null && types.isSameType(actual, a))
+          || (b != null && types.isSameType(actual, b));
     }
 
     private boolean isGetCauseOnInvocationTargetException(MethodInvocationTree tree) {
@@ -1888,7 +1887,7 @@ final class NullSpecAnnotatedTypeFactory
     return new Predicate<>() {
       @Override
       public boolean test(TypeMirror t) {
-        return checker.getTypeUtils().isSameType(t, target);
+        return types.isSameType(t, target);
       }
 
       @Override
