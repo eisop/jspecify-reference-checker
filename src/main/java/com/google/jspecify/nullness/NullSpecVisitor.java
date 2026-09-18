@@ -338,16 +338,11 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   @Override
   public Void visitTypeCast(TypeCastTree tree, Void p) {
     /*
-     * Casting a reference to a primitive type applies an unboxing conversion (JLS 5.1.8). If the
-     * reference is null, that conversion throws NullPointerException, exactly like a dereference.
-     * CF's own visitTypeCast only issues the `cast.unsafe` *warning* here, which does not express
-     * the nullness violation the samples expect (a hard mismatch for a @Nullable operand, "not
-     * enough information" for an unspecified one). So mirror the dereference check: require the
-     * operand to be null-exclusive when the cast target is primitive. (ensureNonNull no-ops when
-     * the operand is itself primitive, e.g. `(int) longValue`, since no unboxing occurs.) Check the
-     * resolved type, not `tree.getType() instanceof PrimitiveTypeTree`, so that an annotation
-     * written on the cast type (`(@Nullable int) obj`) doesn't hide the primitive-ness behind an
-     * AnnotatedTypeTree wrapper.
+     * Casting a reference to a primitive type applies unboxing (JLS 5.1.8), throwing NPE if the
+     * reference is null. CF's visitTypeCast only issues a `cast.unsafe` warning, which does not
+     * report the expected nullness error. Require the operand to be null-exclusive (via
+     * ensureNonNull) when casting to a primitive. Checking `typeOf(tree.getType())` handles
+     * primitive types wrapped in AnnotatedTypeTree (e.g. `(@Nullable int) obj`).
      */
     if (isPrimitive(typeOf(tree.getType()))) {
       ensureNonNull(tree.getExpression());
