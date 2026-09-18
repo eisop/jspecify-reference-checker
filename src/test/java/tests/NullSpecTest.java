@@ -205,9 +205,13 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
     switch (missing.getMessage()) {
       case "jspecify_nullness_intrinsically_not_nullable":
         switch (unexpected.getMessageKey()) {
+          case "annotation.on.supertype":
+          case "constructor.annotated":
           case "enum.constant.annotated":
           case "outer.annotated":
           case "primitive.annotated":
+          case "receiver.annotated":
+          case "supertype.annotated":
             return true;
           default:
             return false;
@@ -223,6 +227,7 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
            * anymore, but I did manually confirm that it is true as of this writing.
            */
           case "bound.type.incompatible":
+          case "exception.type.annotated":
           case "local.variable.annotated":
           case "type.parameter.annotated":
           case "wildcard.annotated":
@@ -232,6 +237,7 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
         }
       case "jspecify_conflicting_annotations":
         switch (unexpected.getMessageKey()) {
+          case "conflicting.annotations":
           case "type.invalid.conflicting.annos":
           case "type.invalid.super.wildcard":
             return true;
