@@ -26,7 +26,7 @@ public abstract class ReportedFact extends Fact {
   /** Returns true if this reported fact matches the given expected fact. */
   protected boolean matches(ExpectedFact expectedFact) {
     return expectedFact.getFactText().equals(getFactText())
-        || (expectedFact.isNullnessNotEnoughInformation() && mustBeExpected());
+        || (expectedFact.isOptionalErrorAssertion() && mustBeExpected());
   }
 
   /** Returns true if this reported fact must match an {@link ExpectedFact}. */

@@ -15,6 +15,7 @@
 package tests;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.jspecify.nullness.NullSpecChecker;
 import java.io.File;
 import java.util.ArrayList;
@@ -153,6 +154,32 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
   }
 
   /**
+   * Message keys that a reported diagnostic may carry to satisfy a {@code
+   * jspecify_nullness_mismatch}-family directive, besides {@code dereference} (which both harnesses
+   * handle separately). Shared with {@code
+   * ConformanceTest.DetailMessageReportedFact.CANNOT_CONVERT_KEYS}: the two harnesses read the same
+   * samples and must answer this question identically, so they read one list rather than two that
+   * can drift.
+   */
+  static final ImmutableSet<String> CANNOT_CONVERT_MESSAGE_KEYS_EXCEPT_DEREFERENCE =
+      ImmutableSet.of(
+          "argument.type.incompatible",
+          "assignment.type.incompatible",
+          "atomicreference.must.include.null",
+          "cast.unsafe",
+          "lambda.param.type.incompatible",
+          "methodref.receiver.bound.invalid",
+          "methodref.receiver.invalid",
+          "methodref.return.invalid",
+          "override.param.invalid",
+          "override.receiver.invalid",
+          "override.return.invalid",
+          "return.type.incompatible",
+          "threadlocal.must.include.null",
+          "type.arguments.not.inferred",
+          "type.argument.type.incompatible");
+
+  /**
    * Returns {@code true} if {@code missing} is a JSpecify directive that matches {@code
    * unexpected}, a reported diagnostic.
    */
@@ -168,26 +195,8 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
         || missing.getMessage().contains("jspecify_nullness_not_enough_information")
         || missing.getMessage().contains("jspecify_nullness_mismatch")
         || missing.getMessage().contains("test:cannot-convert")) {
-      switch (unexpected.getMessageKey()) {
-        case "argument.type.incompatible":
-        case "assignment.type.incompatible":
-        case "atomicreference.must.include.null":
-        case "cast.unsafe":
-        case "dereference":
-        case "lambda.param.type.incompatible":
-        case "methodref.receiver.bound.invalid":
-        case "methodref.receiver.invalid":
-        case "methodref.return.invalid":
-        case "override.param.invalid":
-        case "override.return.invalid":
-        case "return.type.incompatible":
-        case "threadlocal.must.include.null":
-        case "type.arguments.not.inferred":
-        case "type.argument.type.incompatible":
-          return true;
-        default:
-          return false;
-      }
+      return "dereference".equals(unexpected.getMessageKey())
+          || CANNOT_CONVERT_MESSAGE_KEYS_EXCEPT_DEREFERENCE.contains(unexpected.getMessageKey());
     }
 
     switch (missing.getMessage()) {
