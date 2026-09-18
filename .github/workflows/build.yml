@@ -5,7 +5,7 @@ on: [push, pull_request]
 env:
   # Set to 'true' if a release of the EISOP CF should be used.
   # Otherwise, it will be cloned and built.
-  EISOP_RELEASE: true
+  EISOP_RELEASE: false
 
 jobs:
   build-and-test:
