@@ -28,14 +28,12 @@ final class NullSpecStore extends CFAbstractStore<CFValue, NullSpecStore> {
   }
 
   /**
-   * Stores a refinement for a nondeterministic expression -- a method call -- just as for a
-   * deterministic one, ignoring the superclass's {@code permitNondeterministic} argument.
+   * Stores refinements for method calls regardless of the {@code permitNondeterministic} flag.
    *
-   * <p>This checker deliberately refines method calls: {@code NullSpecTransfer} records what a
-   * future {@code map.get(key)} will return from a preceding {@code map.containsKey(key)}, and
-   * {@code if (foo.bar() != null) foo.bar().baz()} is expected to work. Neither is sound in general
-   * -- an intervening call can invalidate either -- but rejecting them would be a false positive on
-   * ordinary code.
+   * <p>This checker deliberately refines method calls: for example, {@code map.containsKey(key)}
+   * refines future {@code map.get(key)} calls, and {@code if (foo.bar() != null) foo.bar().baz()}
+   * is expected to typecheck. While not sound in general, rejecting these would cause false
+   * positives on ordinary code.
    */
   @Override
   protected boolean shouldInsert(

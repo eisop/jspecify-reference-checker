@@ -302,11 +302,10 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   }
 
   /**
-   * Replaces the superclass's whole check rather than adopting its narrower {@code
-   * getThrowUpperBoundAnnotations()} hook: that hook only changes which qualifier a thrown
-   * expression is checked against, but the superclass's check reports a fixed {@code
-   * throw.type.invalid} either way, and this checker's samples expect {@code dereference} (via
-   * {@link #ensureNonNull}, with its {@link #originString} context) instead.
+   * Replaces the superclass check rather than using {@code getThrowUpperBoundAnnotations()}. That
+   * hook only changes the expected qualifier while still reporting {@code throw.type.invalid},
+   * whereas this checker expects {@code dereference} (via {@link #ensureNonNull}, including {@link
+   * #originString} context).
    */
   @Override
   protected void checkThrownExpression(ThrowTree tree) {
