@@ -115,7 +115,6 @@ java {
     sourceCompatibility = 1.9
 }
 
-
 dependencies {
     implementation libs.checkerFramework.checker
     implementation libs.checkerFramework.checker.qual
