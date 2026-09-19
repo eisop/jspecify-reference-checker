@@ -17,7 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java_version: [17, 21, 25]
+        java_version: [17, 21, 25, 27]
+    env:
+      ORG_GRADLE_PROJECT_useJdkVersion: ${{ matrix.java_version }}
     steps:
       - name: Check out jspecify-reference checker
         uses: actions/checkout@v7
@@ -47,24 +49,32 @@ jobs:
           path: checker-framework
           # Optionally, if a particular branch should be used.
           # ref: typetools-3.43.0-fixes
-      - name: Set up Java
+      - name: Set up JDK 21 for Gradle to run on
+        uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 21
+      - name: Set up JDK ${{ matrix.java_version }}
+        if: ${{ matrix.java_version != 21 }}
         uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: ${{ matrix.java_version }}
+      - name: Pin Gradle to JDK 21 via gradle.properties
+        run: mkdir -p ~/.gradle && echo "org.gradle.java.home=$JAVA_HOME_21_X64" >> ~/.gradle/gradle.properties
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest --include-build ../jspecify --warning-mode all
+        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
       - name: Build and Test (EISOP build)
         if: ${{ env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
+        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -77,11 +87,11 @@ jobs:
       - name: Run Samples Tests (EISOP release)
         if: ${{ always() && env.EISOP_RELEASE == 'true' }}
         # If a released CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --warning-mode all
+        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
         # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
+        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
 
   publish-snapshot:
     name: Publish Conformance Test Framework Snapshot
