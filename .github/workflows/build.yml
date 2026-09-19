@@ -5,7 +5,7 @@ on: [push, pull_request]
 env:
   # Set to 'true' if a release of the EISOP CF should be used.
   # Otherwise, it will be cloned and built.
-  EISOP_RELEASE: true
+  EISOP_RELEASE: false
 
 jobs:
   build-and-test:
@@ -15,6 +15,7 @@ jobs:
       run:
         working-directory: jspecify-reference-checker
     strategy:
+      fail-fast: false
       matrix:
         java_version: [17, 21, 25]
     steps:
@@ -49,7 +50,7 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v6
         with:
-          distribution: temurin
+          distribution: zulu
           java-version: ${{ matrix.java_version }}
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
@@ -93,7 +94,7 @@ jobs:
     - name: Set up Java
       uses: actions/setup-java@v6
       with:
-        distribution: temurin
+        distribution: zulu
         java-version: 17
     - name: Set up Gradle
       uses: gradle/actions/setup-gradle@v6

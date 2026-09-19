@@ -270,6 +270,13 @@ tasks.register('binaryStubDiffTest', JavaCompile) {
     group = 'verification'
     dependsOn 'jar'
 
+    onlyIf {
+        // The binary stub file was compiled for JDK 21+. On older JDKs (e.g. JDK 17), methods
+        // and generic signatures in the running JDK differ from the JDK 21 binary stub,
+        // resulting in false-positive mismatches.
+        Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
+    }
+
     source = files("${projectDir}/tests/binary-stub-diff/TriggerBinaryStubDiff.java")
     destinationDirectory = layout.buildDirectory.dir('binaryStubDiff')
 
