@@ -20,7 +20,6 @@ jobs:
         java_version: [17, 21, 25, 27]
     env:
       ORG_GRADLE_PROJECT_useJdkVersion: ${{ matrix.java_version }}
-      JAVA_VERSION: ${{ matrix.java_version }}
     steps:
       - name: Check out jspecify-reference checker
         uses: actions/checkout@v7
