@@ -59,6 +59,16 @@ nexusPublishing {
     }
 }
 
+def majorVersionToInt(majorVersionString) {
+    // ^(\d+) matches the first digit(s) at the start of the string.
+    def m = majorVersionString =~ /^(\d+)/
+    // If a match is found, use the whole match group [0][0] (the first digit(s)). Otherwise, use the original string.
+    // m[0] is the list of match groups and m[0][0] is the whole match.
+    // For example, for input "17", m[0] is ["17", "17"], and m[0][0] is "17".
+    majorVersionString = m ? m[0][0] : majorVersionString
+    return Integer.valueOf(majorVersionString)
+}
+
 ext {
     // null if not included with `--include-build path/to/checker-framework`
     checkerFramework = gradle.includedBuilds.find {
@@ -75,7 +85,16 @@ ext {
     // checker/bin-devel/test-jspecify-reference-checker.sh for a caller that uses this.
     jspecifyJdkHome = project.findProperty('jspecifyJdkHome') ?: '../jdk'
 
-    errorproneSupportsCurrentJdk = Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
+    currentRuntimeJavaVersion = majorVersionToInt(JavaVersion.current().getMajorVersion())
+
+    String useJdkVersionProp = findProperty('useJdkVersion')
+    if (useJdkVersionProp == null) {
+        useJdkVersionInt = currentRuntimeJavaVersion
+    } else {
+        useJdkVersionInt = majorVersionToInt(useJdkVersionProp)
+    }
+
+    errorproneSupportsCurrentJdk = (useJdkVersionInt >= 21) && (useJdkVersionInt <= 26)
 
     javacModules = [
         "api",
@@ -114,6 +133,34 @@ configurations {
 java {
     sourceCompatibility = 1.9
 }
+
+boolean useToolchains = (currentRuntimeJavaVersion != useJdkVersionInt)
+if (useToolchains) {
+    allprojects {
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+            }
+        }
+
+        tasks.withType(JavaExec).configureEach {
+            javaLauncher = javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+            }
+        }
+        tasks.withType(JavaCompile).configureEach {
+            javaCompiler = javaToolchains.compilerFor {
+                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+            }
+        }
+        tasks.withType(Test).configureEach {
+            javaLauncher = javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+            }
+        }
+    }
+}
+
 
 dependencies {
     implementation libs.checkerFramework.checker
@@ -274,7 +321,7 @@ tasks.register('binaryStubDiffTest', JavaCompile) {
         // The binary stub file was compiled for JDK 21+. On older JDKs (e.g. JDK 17), methods
         // and generic signatures in the running JDK differ from the JDK 21 binary stub,
         // resulting in false-positive mismatches.
-        Integer.valueOf(JavaVersion.current().getMajorVersion()) >= 21
+        useJdkVersionInt >= 21
     }
 
     source = files("${projectDir}/tests/binary-stub-diff/TriggerBinaryStubDiff.java")
@@ -294,13 +341,13 @@ tasks.register('binaryStubDiffTest', JavaCompile) {
     // The Error Prone plugin decorates every JavaCompile task; this one runs only the checker.
     options.errorprone.enabled = false
 
-    // Compile against the running JDK, not this project's sourceCompatibility. The check compares
+    // Compile against the target JDK, not this project's sourceCompatibility. The check compares
     // what the binary stub file and the JDK sources say about JDK elements, and the text parser
     // resolves those elements against the compilation's JDK: under an older --release, an element
     // that JDK does not have resolves to nothing, and its annotations look like they are "only in
     // binary" when in truth neither side was ever asked about them.
-    sourceCompatibility = JavaVersion.current().majorVersion
-    targetCompatibility = JavaVersion.current().majorVersion
+    sourceCompatibility = String.valueOf(useJdkVersionInt)
+    targetCompatibility = String.valueOf(useJdkVersionInt)
 
     options.compilerArgs += [
         '-processor',
