@@ -136,26 +136,33 @@ java {
 
 boolean useToolchains = (currentRuntimeJavaVersion != useJdkVersionInt)
 if (useToolchains) {
+    // Read the root project's property here: inside allprojects, a lookup in a subproject that does not
+    // declare it falls back to the root project, which Gradle 10 will reject.
+    int toolchainJdkVersion = useJdkVersionInt
     allprojects {
-        java {
-            toolchain {
-                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+        // The java extension exists only once the plugin is applied; calling java {} earlier resolves it
+        // in the root project, which Gradle 10 will reject.
+        pluginManager.withPlugin('java') {
+            java {
+                toolchain {
+                    languageVersion = JavaLanguageVersion.of(toolchainJdkVersion)
+                }
             }
         }
 
         tasks.withType(JavaExec).configureEach {
             javaLauncher = javaToolchains.launcherFor {
-                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+                languageVersion = JavaLanguageVersion.of(toolchainJdkVersion)
             }
         }
         tasks.withType(JavaCompile).configureEach {
             javaCompiler = javaToolchains.compilerFor {
-                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+                languageVersion = JavaLanguageVersion.of(toolchainJdkVersion)
             }
         }
         tasks.withType(Test).configureEach {
             javaLauncher = javaToolchains.launcherFor {
-                languageVersion = JavaLanguageVersion.of(useJdkVersionInt)
+                languageVersion = JavaLanguageVersion.of(toolchainJdkVersion)
             }
         }
     }
