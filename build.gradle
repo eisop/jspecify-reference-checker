@@ -477,9 +477,9 @@ tasks.register('demoTest', Exec) {
     group = 'verification'
     shouldRunAfter 'conformanceTests'
     dependsOn assemble
-    inputs.files('demo', 'SimpleSample.java')
+    inputs.files('demo', 'SimpleSample.java', 'JdkSample.java')
     executable '/bin/sh'
-    args 'demo', 'SimpleSample.java'
+    args 'demo', 'SimpleSample.java', 'JdkSample.java'
     ignoreExitValue = true
     def outputFile = layout.buildDirectory.file('demoTest-output.txt')
     outputs.file(outputFile)
@@ -490,6 +490,9 @@ tasks.register('demoTest', Exec) {
         def outputFileText = outputFile.get().asFile.text
         if (!outputFileText.contains("SimpleSample.java:7: error:")) {
             throw new AssertionError("`./demo SimpleSample.java` did not contain the expected error. Error output:\n${outputFileText}")
+        }
+        if (!outputFileText.contains("JdkSample.java:8: error:")) {
+            throw new AssertionError("`./demo JdkSample.java` did not contain the expected error, so it may not use the JSpecify annotated JDK. Error output:\n${outputFileText}")
         }
     }
 }
