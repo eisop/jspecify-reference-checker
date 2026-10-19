@@ -72,6 +72,7 @@ import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.type.TypeVariable;
 import javax.lang.model.util.Elements;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.flow.CFAbstractAnalysis;
@@ -124,6 +125,13 @@ final class NullSpecAnnotatedTypeFactory
   private final AnnotationMirror parametricNull;
 
   private final boolean isLeastConvenientWorld;
+
+  /**
+   * Whether {@link NullSpecTypeHierarchy} is comparing the type arguments of an enclosing type (as
+   * in {@code Outer<T>} of {@code Outer<T>.Inner}) rather than the type arguments of a type itself.
+   */
+  private boolean comparingEnclosingTypeArgs = false;
+
   private final NullSpecAnnotatedTypeFactory withLeastConvenientWorld;
   private final NullSpecAnnotatedTypeFactory withMostConvenientWorld;
 
@@ -579,6 +587,43 @@ final class NullSpecAnnotatedTypeFactory
       return new NullSpecEqualityComparer(areEqualVisitHistory);
     }
 
+    /**
+     * The supertype of the innermost active call to {@link #visitTypeArgs}, or null. The superclass
+     * compares the type arguments of enclosing types by calling {@link #visitTypeArgs} on the
+     * enclosing types, so a call whose supertype is the enclosing type of this one is such a
+     * comparison.
+     */
+    private @Nullable AnnotatedDeclaredType activeSupertype = null;
+
+    @Override
+    protected boolean visitTypeArgs(
+        AnnotatedDeclaredType subtype,
+        AnnotatedDeclaredType supertype,
+        boolean subtypeRaw,
+        boolean supertypeRaw) {
+      /*
+       * Since CF compares the type arguments of enclosing types, `Outer<T>.Nested` is not a subtype
+       * of itself in strict mode if `T` has unspecified nullness: `T` is not equal to itself. For
+       * the type arguments of enclosing types, we treat two uses of the same type variable as
+       * equal (see NotNullMarkedAnnotatedInnerOfParameterized in the JSpecify samples). We do not
+       * for the type arguments of a type itself, for which the samples expect errors (see
+       * ComplexParametric and SameTypeTypeVariable).
+       */
+      AnnotatedDeclaredType outerSupertype = activeSupertype;
+      boolean wasComparingEnclosing = comparingEnclosingTypeArgs;
+      @SuppressWarnings("ReferenceEquality")
+      boolean isEnclosing =
+          outerSupertype != null && outerSupertype.getEnclosingType() == supertype;
+      activeSupertype = supertype;
+      comparingEnclosingTypeArgs = isEnclosing;
+      try {
+        return super.visitTypeArgs(subtype, supertype, subtypeRaw, supertypeRaw);
+      } finally {
+        activeSupertype = outerSupertype;
+        comparingEnclosingTypeArgs = wasComparingEnclosing;
+      }
+    }
+
     @Override
     protected boolean visitTypevar_Type(
         AnnotatedTypeVariable subtype, AnnotatedTypeMirror supertype) {
@@ -1006,6 +1051,9 @@ final class NullSpecAnnotatedTypeFactory
     @Override
     public boolean areEqualInHierarchy(
         AnnotatedTypeMirror type1, AnnotatedTypeMirror type2, AnnotationMirror top) {
+      if (comparingEnclosingTypeArgs && areUnspecifiedUsesOfSameTypeVariable(type1, type2)) {
+        return true;
+      }
       return areEqual(type1, type2);
     }
 
@@ -1106,6 +1154,24 @@ final class NullSpecAnnotatedTypeFactory
        * super.visitDeclared_Declared has a TODO with a similar question. Err, presumably normal
        * Java type-checking has done that job. (Nested types are handled by areNestedTypesEqual.)
        */
+    }
+
+    /**
+     * Returns whether both types are uses of the same type variable (not a captured one) with
+     * unspecified nullness. In strict mode, we otherwise treat two unspecified types as unequal.
+     */
+    private boolean areUnspecifiedUsesOfSameTypeVariable(
+        AnnotatedTypeMirror type1, AnnotatedTypeMirror type2) {
+      if (type1.getKind() != TYPEVAR
+          || type2.getKind() != TYPEVAR
+          || !type1.hasAnnotation(nullnessOperatorUnspecified)
+          || !type2.hasAnnotation(nullnessOperatorUnspecified)) {
+        return false;
+      }
+      TypeVariable typeVariable1 = (TypeVariable) type1.getUnderlyingType();
+      TypeVariable typeVariable2 = (TypeVariable) type2.getUnderlyingType();
+      return !isCapturedTypeVariable(typeVariable1)
+          && typeVariable1.asElement().equals(typeVariable2.asElement());
     }
 
     /**
