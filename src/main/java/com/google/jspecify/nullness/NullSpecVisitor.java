@@ -206,7 +206,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   protected void checkConstructorResult(
-      AnnotatedExecutableType constructorType, ExecutableElement constructorElement) {
+      AnnotatedExecutableType constructorType, MethodTree constructorTree) {
     // TODO: ensure no explicit annotations on class & constructor
   }
 
