@@ -73,8 +73,10 @@ jobs:
           JSPECIFY_CONFORMANCE_TEST_MODE: details
       - name: Build and Test (EISOP build)
         if: ${{ env.EISOP_RELEASE != 'true' }}
-        # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
+        # If a cloned EISOP CF is needed, use the following.
+        # -PskipAnnotatedJdk: build the CF without its annotated JDK, which this project replaces
+        # with its own, built from jspecify/jdk; jdk/ holds jspecify/jdk, not eisop/jdk.
+        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework -PskipAnnotatedJdk --warning-mode all --no-configuration-cache
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -90,8 +92,10 @@ jobs:
         run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
-        # If a cloned EISOP CF is needed, use the following:
-        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework --warning-mode all --no-configuration-cache
+        # If a cloned EISOP CF is needed, use the following.
+        # -PskipAnnotatedJdk: build the CF without its annotated JDK, which this project replaces
+        # with its own, built from jspecify/jdk; jdk/ holds jspecify/jdk, not eisop/jdk.
+        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework -PskipAnnotatedJdk --warning-mode all --no-configuration-cache
 
   publish-snapshot:
     name: Publish Conformance Test Framework Snapshot
