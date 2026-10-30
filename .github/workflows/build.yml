@@ -66,16 +66,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
-        # If a released CF is needed, use the following:
+        # Builds against a released Checker Framework.
         run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
       - name: Build and Test (EISOP build)
         if: ${{ env.EISOP_RELEASE != 'true' }}
-        # If a cloned EISOP CF is needed, use the following.
-        # -PskipAnnotatedJdk: build the CF without its annotated JDK, which this project replaces
-        # with its own, built from jspecify/jdk; jdk/ holds jspecify/jdk, not eisop/jdk.
+        # Builds against eisop/checker-framework master, checked out above. -PskipAnnotatedJdk
+        # builds it without its annotated JDK: jdk/ holds jspecify/jdk, from which this project
+        # builds its own annotated JDK.
         run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework -PskipAnnotatedJdk --warning-mode all --no-configuration-cache
         env:
           SHALLOW: 1
@@ -88,13 +88,13 @@ jobs:
         working-directory: jspecify
       - name: Run Samples Tests (EISOP release)
         if: ${{ always() && env.EISOP_RELEASE == 'true' }}
-        # If a released CF is needed, use the following:
+        # Builds against a released Checker Framework.
         run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
       - name: Run Samples Tests (EISOP build)
         if: ${{ always() && env.EISOP_RELEASE != 'true' }}
-        # If a cloned EISOP CF is needed, use the following.
-        # -PskipAnnotatedJdk: build the CF without its annotated JDK, which this project replaces
-        # with its own, built from jspecify/jdk; jdk/ holds jspecify/jdk, not eisop/jdk.
+        # Builds against eisop/checker-framework master, checked out above. -PskipAnnotatedJdk
+        # builds it without its annotated JDK: jdk/ holds jspecify/jdk, from which this project
+        # builds its own annotated JDK.
         run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --include-build ../checker-framework -PskipAnnotatedJdk --warning-mode all --no-configuration-cache
 
   publish-snapshot:
