@@ -2256,16 +2256,6 @@ final class NullSpecAnnotatedTypeFactory
   }
 
   @Override
-  public void preProcessClassTree(ClassTree tree) {
-    // For discussion of short-circuiting, see NullSpecVisitor.processClassTree.
-    if (util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())) {
-      return;
-    }
-
-    super.preProcessClassTree(tree);
-  }
-
-  @Override
   public void postProcessClassTree(ClassTree tree) {
     /*
      * To avoid writing computed annotations into bytecode (or even into the in-memory javac Element

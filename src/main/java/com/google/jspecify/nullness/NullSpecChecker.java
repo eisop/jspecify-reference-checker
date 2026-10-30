@@ -17,6 +17,8 @@ package com.google.jspecify.nullness;
 import static com.sun.source.util.TaskEvent.Kind.COMPILATION;
 import static javax.tools.Diagnostic.Kind.NOTE;
 
+import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
@@ -77,6 +79,43 @@ public final class NullSpecChecker extends BaseTypeChecker {
   @Override
   protected String suppressWarningsString(String messageKey) {
     return "nullness";
+  }
+
+  /*
+   * We skip a class or method annotated with @SuppressWarnings("nullness") entirely. This is in
+   * contrast to the default CF approach, which is to continue to process code but not report
+   * warnings.
+   *
+   * The advantage to our approach is that, if our checker crashes or takes a long time for a given
+   * piece of code (perhaps especially *generated* code), users can easily disable checking for that
+   * code.
+   *
+   * Why does CF behave the way it does? I'm hoping that it's mostly because its infrastructure
+   * doesn't want to make assumptions about what kinds of warnings a given checker can produce. We,
+   * by contrast, have implemented getSuppressWarningsPrefixes() to make *all* our warnings
+   * suppressible with @SuppressWarnings("nullness").
+   *
+   * But I do worry a little that the checker needs to do *some* processing of a class tree so that
+   * it can use that information when it checks *other* classes. If so, then skipping it could be
+   * trouble. But I'm cautiously optimistic that, since we never visit *trees* at all for
+   * *classpath* dependencies, we can get away without visiting them for *source* dependencies, too.
+   *
+   * BaseTypeVisitor.visitClass consults shouldSkipDefs(ClassTree) before the type factory's
+   * preProcessClassTree (which runs dataflow), processClassTree and postProcessClassTree, and
+   * visitMethod consults shouldSkipDefs(MethodTree) before processMethodTree. NullSpecVisitor also
+   * short-circuits visitVariable, for which there is no such hook.
+   */
+
+  @Override
+  public boolean shouldSkipDefs(ClassTree tree) {
+    return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
+        || super.shouldSkipDefs(tree);
+  }
+
+  @Override
+  public boolean shouldSkipDefs(MethodTree tree) {
+    return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
+        || super.shouldSkipDefs(tree);
   }
 
   @Override
