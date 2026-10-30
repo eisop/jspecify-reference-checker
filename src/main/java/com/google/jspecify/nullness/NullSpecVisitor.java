@@ -207,12 +207,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   @Override
   protected void checkConstructorResult(
       AnnotatedExecutableType constructorType, MethodTree constructorTree) {
-    /*
-     * CF's implementation warns when a constructor's result type is not the top type. Ours is
-     * non-null by default (see CONSTRUCTOR_RESULT in NullSpecAnnotatedTypeFactory), so skip that
-     * check. A nullness annotation written on the constructor is reported by processMethodTree, and
-     * one written on the class declaration by processClassTree.
-     */
+    // TODO: ensure no explicit annotations on class & constructor
   }
 
   /**
@@ -696,14 +691,6 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     }
 
     checkNoConflictingMarkingAnnotations(tree.getModifiers().getAnnotations());
-
-    /*
-     * A type-use annotation is also applicable to a class, interface, enum, or record declaration
-     * (JLS 9.6.4.1), so `@Nullable class Foo {}` compiles. A declaration is not a type use, though,
-     * and JSpecify gives the annotation no meaning there.
-     */
-    checkNoNullnessAnnotations(
-        tree, tree.getModifiers().getAnnotations(), "type.declaration.annotated");
 
     /*
      * A supertype reference in an extends or implements clause is always non-null -- you can't

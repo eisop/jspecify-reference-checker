@@ -166,7 +166,6 @@ public final class ConformanceTest {
             "exception.type.annotated",
             "local.variable.annotated",
             "primitive.annotated",
-            "type.declaration.annotated",
             "type.parameter.annotated",
             "wildcard.annotated");
 
