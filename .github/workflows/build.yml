@@ -1,6 +1,15 @@
 name: Continuous Integration
 
-on: [push, pull_request]
+# A pull request runs once, for pull_request: running for push as well would run it twice.
+on:
+  pull_request:
+  push:
+    branches: [main-eisop, main]
+
+# Cancel a pull request's run when a newer commit is pushed to it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Set to 'true' if a release of the EISOP CF should be used.
