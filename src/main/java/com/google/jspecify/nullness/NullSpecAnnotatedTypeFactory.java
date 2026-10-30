@@ -917,8 +917,9 @@ final class NullSpecAnnotatedTypeFactory
      * My only worry is that I always worry about making calls to getAnnotatedType, as discussed in
      * various comments in this file (e.g., in NullSpecTreeAnnotator.visitMethodInvocation).
      *
-     * This is likely caused by https://github.com/eisop/checker-framework/issues/737.
-     * Revisit this once that issue is fixed.
+     * We suspected https://github.com/eisop/checker-framework/issues/737. That issue is fixed, but
+     * this is still necessary: without it, tests/regression and the conformance sample
+     * implementWithNullableTypeArgument/User.java fail.
      */
     Element typeParameterElement = null;
     if (type instanceof AnnotatedTypeVariable
