@@ -90,17 +90,17 @@ jobs:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
       - name: Check out jspecify/samples-google-prototype-eisop
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           git fetch --depth=1 origin samples-google-prototype-eisop
           git checkout samples-google-prototype-eisop
         working-directory: jspecify
       - name: Run Samples Tests (EISOP release)
-        if: ${{ always() && env.EISOP_RELEASE == 'true' }}
+        if: ${{ !cancelled() && env.EISOP_RELEASE == 'true' }}
         # Builds against a released Checker Framework.
         run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
       - name: Run Samples Tests (EISOP build)
-        if: ${{ always() && env.EISOP_RELEASE != 'true' }}
+        if: ${{ !cancelled() && env.EISOP_RELEASE != 'true' }}
         # Builds against eisop/checker-framework master, checked out above. -PskipAnnotatedJdk
         # builds it without its annotated JDK: jdk/ holds jspecify/jdk, from which this project
         # builds its own annotated JDK.
