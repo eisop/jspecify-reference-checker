@@ -566,7 +566,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitVariable(VariableTree tree, Void p) {
-    // For discussion of short-circuiting, see processClassTree.
+    // For discussion of short-circuiting, see NullSpecChecker.shouldSkipDefs.
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
     if (util.hasSuppressWarningsNullness(annotations)) {
       return null;
@@ -602,12 +602,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public void processMethodTree(String className, MethodTree tree) {
-    // For discussion of short-circuiting, see processClassTree.
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
-    if (util.hasSuppressWarningsNullness(annotations)) {
-      return;
-    }
-
     Tree returnType = tree.getReturnType();
     if (returnType != null) {
       if (isPrimitiveOrArrayOfPrimitive(returnType)) {
@@ -666,35 +661,6 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public void processClassTree(ClassTree tree) {
-    /*
-     * We short-circuit if we see @SuppressWarnings("nullness"). This is in contrast to the default
-     * CF approach, which is to continue to process code but not report warnings.
-     *
-     * The advantage to our approach is that, if our checker crashes or takes a long time for a
-     * given piece of code (perhaps especially *generated* code), users can easily disable checking
-     * for that code.
-     *
-     * Why does CF behave the way it does? I'm hoping that it's mostly because its infrastructure
-     * doesn't want to make assumptions about what kinds of warnings a given checker can produce.
-     * We, by contrast, have implemented NullSpecChecker.getSuppressWarningsPrefixes() to make *all*
-     * our warnings suppressible with @SuppressWarnings("nullness").
-     *
-     * But I do worry a little that the checker needs to do *some* processing of a class tree so
-     * that it can use that information when it checks *other* classes. If so, then our overrides of
-     * processClassTree here and preProcessClassTree in NullSpecAnnotatedTypeFactory could be
-     * trouble. But I'm cautiously optimistic that, since we never visit *trees* at all for
-     * *classpath* dependencies, we can get away without visiting them for *source* dependencies,
-     * too.
-     *
-     * Finally: For class-level suppression specifically, we can't override visitClass, which is
-     * `final`. visitClass's docs advise us to override processClassTree. But that is not sufficient
-     * to skip all expensive work, so we must also override preProcessClassTree in
-     * NullSpecAnnotatedTypeFactory.
-     */
-    if (util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())) {
-      return;
-    }
-
     checkNoConflictingMarkingAnnotations(tree.getModifiers().getAnnotations());
 
     /*
