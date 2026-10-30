@@ -229,6 +229,7 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
           case "bound.type.incompatible":
           case "exception.type.annotated":
           case "local.variable.annotated":
+          case "type.declaration.annotated":
           case "type.parameter.annotated":
           case "wildcard.annotated":
             return true;
