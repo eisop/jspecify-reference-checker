@@ -1569,25 +1569,6 @@ final class NullSpecAnnotatedTypeFactory
   }
 
   @Override
-  protected void adaptGetClassReturnTypeToReceiver(
-      AnnotatedExecutableType getClassType, AnnotatedTypeMirror receiverType, ExpressionTree tree) {
-    super.adaptGetClassReturnTypeToReceiver(getClassType, receiverType, tree);
-
-    /*
-     * Change `Class<? super Foo?>` to `Class<? super Foo>`.
-     *
-     * We could instead do this in NullSpecTreeAnnotator.visitMethodInvocation. However, by handling
-     * it here, we cover not only method invocations but also method references.
-     *
-     * TODO(cpovirk): Move other logic out of NullSpecTreeAnnotator.visitMethodInvocation and into
-     * methodFromUse so that it, too, can cover method references?
-     */
-    AnnotatedDeclaredType returnType = (AnnotatedDeclaredType) getClassType.getReturnType();
-    AnnotatedTypeVariable typeArg = (AnnotatedTypeVariable) returnType.getTypeArguments().get(0);
-    typeArg.getUpperBound().replaceAnnotation(minusNull);
-  }
-
-  @Override
   protected TreeAnnotator createTreeAnnotator() {
     return new ListTreeAnnotator(new NullSpecTreeAnnotator(this), super.createTreeAnnotator());
   }
