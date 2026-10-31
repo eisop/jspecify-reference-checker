@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Every bound of an intersection constrains it, whichever position it is in: one non-null bound
-// makes a type variable null-exclusive, and only nullable bounds make it null-inclusive.
+// makes a type variable or a cast null-exclusive, and only nullable bounds make it null-inclusive.
 
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -49,5 +49,18 @@ class IntersectionBoundOrder {
   <T extends @Nullable Object & @Nullable Lib> T allNullableReturn(T t) {
     // :: error: (return.type.incompatible)
     return null;
+  }
+
+  // In a cast, a bound without a written annotation has the operand's nullness.
+  void castNonNull(Object o) {
+    ((@Nullable Object & Lib) o).toString();
+    ((Lib & @Nullable Lib2) o).toString();
+  }
+
+  void castNullable(@Nullable Object o) {
+    // :: error: (dereference)
+    ((@Nullable Object & Lib) o).toString();
+    // :: error: (dereference)
+    ((Lib & @Nullable Lib2) o).toString();
   }
 }
