@@ -112,6 +112,7 @@ import org.checkerframework.framework.util.DefaultQualifierKindHierarchy;
 import org.checkerframework.framework.util.NoContractsFromMethod;
 import org.checkerframework.framework.util.QualifierKindHierarchy;
 import org.checkerframework.framework.util.defaults.QualifierDefaults;
+import org.checkerframework.framework.util.visualize.TypeInformationPresenter;
 import org.checkerframework.javacutil.AnnotationBuilder;
 
 final class NullSpecAnnotatedTypeFactory
@@ -136,8 +137,6 @@ final class NullSpecAnnotatedTypeFactory
   private final NullSpecAnnotatedTypeFactory withMostConvenientWorld;
 
   private final AnnotatedDeclaredType javaUtilCollection;
-
-  private final ConformanceTypeInformationPresenter conformanceInformationPresenter;
 
   /**
    * Memoizes {@link #perElementIntersectionBounds}, keyed by type-parameter element. Sound because
@@ -358,9 +357,6 @@ final class NullSpecAnnotatedTypeFactory
       withLeastConvenientWorld = withOtherWorld;
       withMostConvenientWorld = this;
     }
-
-    conformanceInformationPresenter =
-        checker.hasOption("showTypes") ? new ConformanceTypeInformationPresenter(this) : null;
 
     if (!givenOtherWorld) {
       /*
@@ -2266,10 +2262,10 @@ final class NullSpecAnnotatedTypeFactory
   }
 
   @Override
-  public void postProcessClassTree(ClassTree tree) {
+  protected boolean shouldStoreInBytecode() {
     /*
-     * To avoid writing computed annotations into bytecode (or even into the in-memory javac Element
-     * objects), do not call the supermethod.
+     * Never write computed annotations into bytecode (or even into the in-memory javac Element
+     * objects).
      *
      * We don't want to write computed annotations to bytecode because we don't want for checkers
      * (including this one!) to depend on those annotations. All core JSpecify nullness information
@@ -2288,10 +2284,12 @@ final class NullSpecAnnotatedTypeFactory
      * type.invalid.conflicting.annos error, which I have described more in
      * https://github.com/jspecify/jspecify-reference-checker/commit/d16a0231487e239bc94145177de464b5f77c8b19
      */
+    return false;
+  }
 
-    if (conformanceInformationPresenter != null) {
-      conformanceInformationPresenter.process(tree, getPath(tree));
-    }
+  @Override
+  protected @Nullable TypeInformationPresenter createTypeInformationPresenter() {
+    return checker.hasOption("showTypes") ? new ConformanceTypeInformationPresenter(this) : null;
   }
 
   @Override
