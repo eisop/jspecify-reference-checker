@@ -55,7 +55,6 @@ import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -138,17 +137,6 @@ final class NullSpecAnnotatedTypeFactory
   private final AnnotatedDeclaredType javaUtilCollection;
 
   private final ConformanceTypeInformationPresenter conformanceInformationPresenter;
-
-  /**
-   * Memoizes {@link #perElementIntersectionBounds}, keyed by type-parameter element. Sound because
-   * {@link #getUpperBounds}'s sole call site always passes {@code getAnnotatedType(scope)
-   * .getUpperBound()}, and {@link #getAnnotatedType(Element)} caches a frozen, fully-defaulted
-   * result per element, so a fixed {@code scope} always recomputes the same bounds. (The least- and
-   * most-convenient-world sibling factories have their own instance of this cache, which is correct
-   * since their defaulting can differ.)
-   */
-  private final Map<Element, List<? extends AnnotatedTypeMirror>>
-      perElementIntersectionBoundsCache = new HashMap<>();
 
   final AnnotatedDeclaredType javaLangClass;
   final AnnotatedDeclaredType javaLangThreadLocal;
@@ -439,6 +427,24 @@ final class NullSpecAnnotatedTypeFactory
   @Override
   protected QualifierHierarchy createQualifierHierarchy() {
     return new NullSpecQualifierHierarchy(getSupportedTypeQualifiers(), elements);
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>Per the JSpecify spec, every bound of an intersection constrains it: {@code @Nullable Object
+   * & Lib} is null-exclusive through its {@code Lib} bound. So the summary is the greatest lower
+   * bound, not CF's default of the first bound's qualifier. Nullness qualifiers form a chain
+   * ({@code MinusNull} below {@code NullnessUnspecified} below {@code Nullable}), so the summary is
+   * null-exclusive exactly if some bound is and null-inclusive exactly if every bound is, in both
+   * the least and the most convenient world.
+   */
+  @Override
+  protected AnnotationMirror combineIntersectionBoundAnnotationsInHierarchy(
+      AnnotationMirror existingAnnotation,
+      AnnotationMirror newAnnotation,
+      QualifierHierarchy qualifierHierarchy) {
+    return qualifierHierarchy.greatestLowerBoundQualifiersOnly(existingAnnotation, newAnnotation);
   }
 
   private final class NullSpecQualifierHierarchy extends NoElementQualifierHierarchy {
@@ -780,15 +786,8 @@ final class NullSpecAnnotatedTypeFactory
   }
 
   boolean isNullExclusiveUnderEveryParameterization(AnnotatedTypeMirror type) {
-    /*
-     * A *value* of `type` establishes non-null on its own if any intersection bound does (per spec,
-     * `@Nullable Object & Lib` is null-exclusive via its non-null `Lib` bound), so pass
-     * perElementBounds=true to recover per-bound truth instead of CF's homogenized summary. The
-     * isNullnessSubtype path below keeps the homogenized view, since type-argument acceptance there
-     * is unaffected.
-     */
     return nullnessEstablishingPathExists(
-        type, IS_DECLARED_OR_ARRAY_OR_NULL, /* perElementBounds= */ true, /* pastCapture= */ false);
+        type, IS_DECLARED_OR_ARRAY_OR_NULL, /* pastCapture= */ false);
   }
 
   private boolean nullnessEstablishingPathExists(
@@ -800,10 +799,7 @@ final class NullSpecAnnotatedTypeFactory
      * isNullExclusiveUnderEveryParameterization.
      */
     return nullnessEstablishingPathExists(
-        subtype,
-        isSameTypeAs(supertype.getUnderlyingType()),
-        /* perElementBounds= */ false,
-        /* pastCapture= */ false);
+        subtype, isSameTypeAs(supertype.getUnderlyingType()), /* pastCapture= */ false);
   }
 
   /**
@@ -814,10 +810,7 @@ final class NullSpecAnnotatedTypeFactory
    *     {@link #getUpperBounds} not to discard that narrowing by re-reading the declaration.
    */
   private boolean nullnessEstablishingPathExists(
-      AnnotatedTypeMirror subtype,
-      Predicate<TypeMirror> supertypeMatcher,
-      boolean perElementBounds,
-      boolean pastCapture) {
+      AnnotatedTypeMirror subtype, Predicate<TypeMirror> supertypeMatcher, boolean pastCapture) {
     /*
      * In most cases, we do not need to check specifically for minusNull because the remainder of
      * the method is sufficient. However, consider a type that meets all 3 of the following
@@ -865,10 +858,8 @@ final class NullSpecAnnotatedTypeFactory
     // isCapturedTypeVariable requires TypeKind.TYPEVAR, which already implies subtype is an
     // AnnotatedTypeVariable.
     boolean stillPastCapture = pastCapture || isCapturedTypeVariable(subtype.getUnderlyingType());
-    for (AnnotatedTypeMirror supertype :
-        getUpperBounds(subtype, perElementBounds, stillPastCapture)) {
-      if (nullnessEstablishingPathExists(
-          supertype, supertypeMatcher, perElementBounds, stillPastCapture)) {
+    for (AnnotatedTypeMirror supertype : getUpperBounds(subtype, stillPastCapture)) {
+      if (nullnessEstablishingPathExists(supertype, supertypeMatcher, stillPastCapture)) {
         return true;
       }
     }
@@ -877,13 +868,9 @@ final class NullSpecAnnotatedTypeFactory
 
   /**
    * Returns true if {@code typeVar}'s upper bound is null-inclusive under every parameterization.
-   * Uses {@link #getUpperBounds}'s per-element recovery, not {@code
-   * AnnotatedIntersectionType#getBounds()} directly, since for an intersection every component must
-   * be null-inclusive on its own, and CF homogenizes the primary annotation from the first bound.
    */
   boolean isUpperBoundNullInclusive(AnnotatedTypeVariable typeVar) {
-    for (AnnotatedTypeMirror bound :
-        getUpperBounds(typeVar, /* perElementBounds= */ true, /* pastCapture= */ false)) {
+    for (AnnotatedTypeMirror bound : getUpperBounds(typeVar, /* pastCapture= */ false)) {
       if (!isNullInclusiveUnderEveryParameterization(bound)) {
         return false;
       }
@@ -896,10 +883,10 @@ final class NullSpecAnnotatedTypeFactory
    *     variable's own upper bound, computed by capture conversion rather than copied from the
    *     declaration; when true, skip the declaration re-read below so as not to discard that
    *     narrowing. See {@link #nullnessEstablishingPathExists(AnnotatedTypeMirror, Predicate,
-   *     boolean, boolean)}.
+   *     boolean)}.
    */
   private List<? extends AnnotatedTypeMirror> getUpperBounds(
-      AnnotatedTypeMirror type, boolean perElementBounds, boolean pastCapture) {
+      AnnotatedTypeMirror type, boolean pastCapture) {
     /*
      * In the case of a type-variable usage, we ignore the bounds attached to it in favor of the
      * bounds on the type-parameter declaration. This is necessary in certain cases.
@@ -920,13 +907,11 @@ final class NullSpecAnnotatedTypeFactory
      * This is likely caused by https://github.com/eisop/checker-framework/issues/737.
      * Revisit this once that issue is fixed.
      */
-    Element typeParameterElement = null;
     if (type instanceof AnnotatedTypeVariable
         && !isCapturedTypeVariable(type.getUnderlyingType())
         && !pastCapture) {
       AnnotatedTypeVariable variable = (AnnotatedTypeVariable) type;
-      typeParameterElement = variable.getUnderlyingType().asElement();
-      type = getAnnotatedType(typeParameterElement);
+      type = getAnnotatedType(variable.getUnderlyingType().asElement());
     }
 
     switch (type.getKind()) {
@@ -934,24 +919,7 @@ final class NullSpecAnnotatedTypeFactory
         return ((AnnotatedIntersectionType) type).getBounds();
 
       case TYPEVAR:
-        AnnotatedTypeMirror upperBound = ((AnnotatedTypeVariable) type).getUpperBound();
-        /*
-         * CF homogenizes an intersection upper bound onto every bound (one summary qualifier per
-         * hierarchy, first bound wins; see AnnotatedIntersectionType.copyIntersectionBoundAnnotations),
-         * discarding exactly what a nullness establishing-path check needs: whether *one* bound
-         * establishes non-null on its own (per spec, `@Nullable Object & Lib` is null-exclusive via
-         * its non-null `Lib` bound). Recover each bound's own qualifier when we have the
-         * type-parameter element -- only for the declaration's own bounds; elsewhere the homogenized
-         * view stands.
-         */
-        if (perElementBounds
-            && typeParameterElement != null
-            && upperBound.getKind() == INTERSECTION) {
-          Element scope = typeParameterElement;
-          return perElementIntersectionBoundsCache.computeIfAbsent(
-              scope, s -> perElementIntersectionBounds((AnnotatedIntersectionType) upperBound, s));
-        }
-        return singletonList(upperBound);
+        return singletonList(((AnnotatedTypeVariable) type).getUpperBound());
 
       /*
        * We used to have a case here for WILDCARD. It shouldn't be necessary now that we've merged
@@ -967,59 +935,6 @@ final class NullSpecAnnotatedTypeFactory
       default:
         return emptyList();
     }
-  }
-
-  /**
-   * Returns the bounds of an intersection type-variable upper bound, each carrying its <i>own</i>
-   * nullness qualifier rather than CF's homogenized (first-bound-wins) summary. Rebuilds each bound
-   * from the raw, never-homogenized {@code IntersectionType} bounds of {@code scope}'s underlying
-   * type: an explicitly written nullness annotation if the bound has one, else whatever it defaults
-   * to on its own in {@code scope}. The first bound is kept as CF produced it, since first-bound-
-   * wins already makes the summary equal to its own qualifier.
-   */
-  private List<? extends AnnotatedTypeMirror> perElementIntersectionBounds(
-      AnnotatedIntersectionType intersection, Element scope) {
-    List<AnnotatedTypeMirror> homogenizedBounds = intersection.getBounds();
-    List<? extends TypeMirror> rawBounds = intersection.getUnderlyingType().getBounds();
-    if (rawBounds.size() != homogenizedBounds.size()) {
-      // Structure we don't recognize; fall back to CF's homogenized view.
-      return homogenizedBounds;
-    }
-
-    List<AnnotatedTypeMirror> result = new ArrayList<>(homogenizedBounds.size());
-    // First-bound-wins: the summary already equals the first bound's own qualifier.
-    result.add(homogenizedBounds.get(0));
-    for (int i = 1; i < homogenizedBounds.size(); i++) {
-      TypeMirror rawBound = rawBounds.get(i);
-      AnnotatedTypeMirror ownBound = AnnotatedTypeMirror.createType(rawBound, this, false);
-      // Default the bound on its own, independent of the other bounds' qualifiers.
-      addComputedTypeAnnotations(scope, ownBound);
-      // An explicitly written nullness annotation on the bound wins over the default.
-      AnnotationMirror explicit = explicitNullnessAnnotation(rawBound);
-      if (explicit != null) {
-        ownBound.replaceAnnotation(explicit);
-      }
-      result.add(ownBound);
-    }
-    return result;
-  }
-
-  /**
-   * Returns the canonical nullness qualifier explicitly written on {@code type} (JSpecify source
-   * annotations mapped through the factory's aliasing), or {@code null} if none is.
-   */
-  private AnnotationMirror explicitNullnessAnnotation(TypeMirror type) {
-    for (AnnotationMirror anno : type.getAnnotationMirrors()) {
-      // isSupportedQualifier accepts null, so this also covers an unaliased anno directly.
-      AnnotationMirror canonical = canonicalAnnotation(anno);
-      if (isSupportedQualifier(canonical)) {
-        return canonical;
-      }
-      if (isSupportedQualifier(anno)) {
-        return anno;
-      }
-    }
-    return null;
   }
 
   /*
@@ -1414,9 +1329,8 @@ final class NullSpecAnnotatedTypeFactory
      * with definitely nullable bounds, substituted into an UNSPECIFIED usage.
      *
      * <p>Like {@link #isDefinitelyNullableCaptureReadAsMember}, applying UNSPECIFIED to a
-     * definitely nullable type yields UNION_NULL (with null-exclusivity checked to bypass CF's
-     * homogenized intersection summary). This is limited to *inferred* type arguments because an
-     * explicitly written type argument must be preserved as written.
+     * definitely nullable type yields UNION_NULL. This is limited to *inferred* type arguments
+     * because an explicitly written type argument must be preserved as written.
      */
     private boolean isDefinitelyNullableInferredTypeArgument(
         AnnotatedTypeMirror argument, AnnotatedTypeVariable use, boolean argumentIsInferred) {
