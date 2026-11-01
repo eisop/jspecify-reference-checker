@@ -893,40 +893,29 @@ final class NullSpecAnnotatedTypeFactory
 
   /**
    * @param pastCapture whether {@code type} was reached by walking out of a captured type
-   *     variable's own upper bound, computed by capture conversion rather than copied from the
-   *     declaration; when true, skip the declaration re-read below so as not to discard that
-   *     narrowing. See {@link #nullnessEstablishingPathExists(AnnotatedTypeMirror, Predicate,
-   *     boolean, boolean)}.
+   *     variable's own upper bound, computed by capture conversion; when true, do not recover the
+   *     declaration's per-element intersection bounds below, so as not to discard that narrowing.
+   *     See {@link #nullnessEstablishingPathExists(AnnotatedTypeMirror, Predicate, boolean,
+   *     boolean)}.
    */
   private List<? extends AnnotatedTypeMirror> getUpperBounds(
       AnnotatedTypeMirror type, boolean perElementBounds, boolean pastCapture) {
     /*
-     * In the case of a type-variable usage, we ignore the bounds attached to it in favor of the
-     * bounds on the type-parameter declaration. This is necessary in certain cases.
-     *
-     * I won't claim to understand *why* it will be necessary. Maybe the bounds aren't getting
-     * copied from the declaration to the usage correctly. Or maybe they're getting copied but then
-     * CF is mutating/replacing them (since it seems to update *bounds* based on annotations on the
-     * *usage* in some cases -- though we've tried to short-circuit that).
-     *
-     * In any case, in our model for nullness checking, we usually want to look at the original
-     * bounds. So whatever the reason we have different bounds here, we don't want them -- except
-     * when `pastCapture` says this bound was computed by capture conversion, not copied from a
-     * declaration; see that parameter's Javadoc.
-     *
-     * My only worry is that I always worry about making calls to getAnnotatedType, as discussed in
-     * various comments in this file (e.g., in NullSpecTreeAnnotator.visitMethodInvocation).
-     *
-     * This is likely caused by https://github.com/eisop/checker-framework/issues/737.
-     * Revisit this once that issue is fixed.
+     * A type-variable usage has the bounds of its type-parameter declaration: those written in
+     * source or bytecode, and, since CF applies them to usages as well, those written in an
+     * annotation file such as the JSpecify JDK. This method used to re-read the declaration with
+     * getAnnotatedType(typeParameterElement) instead, because a usage created from a javac
+     * TypeMirror (the supertypes of a class whose tree is gone, the method types of a class from
+     * bytecode, the ground target type of a method reference) only had defaulted bounds, so `T
+     * extends @Nullable Object` read as `T extends Object` there, and substituteTypeVariable
+     * above then forced MINUS_NULL onto the argument. The element is kept only to recover the
+     * per-element bounds of an intersection, which CF homogenizes.
      */
     Element typeParameterElement = null;
     if (type instanceof AnnotatedTypeVariable
         && !isCapturedTypeVariable(type.getUnderlyingType())
         && !pastCapture) {
-      AnnotatedTypeVariable variable = (AnnotatedTypeVariable) type;
-      typeParameterElement = variable.getUnderlyingType().asElement();
-      type = getAnnotatedType(typeParameterElement);
+      typeParameterElement = ((AnnotatedTypeVariable) type).getUnderlyingType().asElement();
     }
 
     switch (type.getKind()) {
