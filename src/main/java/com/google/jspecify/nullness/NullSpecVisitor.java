@@ -204,17 +204,6 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     }
   }
 
-  @Override
-  protected void checkConstructorResult(
-      AnnotatedExecutableType constructorType, MethodTree constructorTree) {
-    /*
-     * CF's implementation warns when a constructor's result type is not the top type. Ours is
-     * non-null by default (see CONSTRUCTOR_RESULT in NullSpecAnnotatedTypeFactory), so skip that
-     * check. A nullness annotation written on the constructor is reported by processMethodTree, and
-     * one written on the class declaration by processClassTree.
-     */
-  }
-
   /**
    * Returns {@code false} for a type argument that is the capture of a source-written wildcard,
    * skipping the redundant bounds check.
