@@ -105,9 +105,7 @@ import org.checkerframework.framework.type.treeannotator.ListTreeAnnotator;
 import org.checkerframework.framework.type.treeannotator.TreeAnnotator;
 import org.checkerframework.framework.type.typeannotator.TypeAnnotator;
 import org.checkerframework.framework.type.visitor.AnnotatedTypeVisitor;
-import org.checkerframework.framework.util.AnnotationFormatter;
 import org.checkerframework.framework.util.ContractsFromMethod;
-import org.checkerframework.framework.util.DefaultAnnotationFormatter;
 import org.checkerframework.framework.util.DefaultQualifierKindHierarchy;
 import org.checkerframework.framework.util.NoContractsFromMethod;
 import org.checkerframework.framework.util.QualifierKindHierarchy;
@@ -2010,17 +2008,6 @@ final class NullSpecAnnotatedTypeFactory
   @Override
   protected NullSpecAnalysis createFlowAnalysis() {
     return new NullSpecAnalysis(checker, this);
-  }
-
-  @Override
-  protected AnnotationFormatter createAnnotationFormatter() {
-    return new DefaultAnnotationFormatter() {
-      @Override
-      public String formatAnnotationString(
-          Collection<? extends AnnotationMirror> annos, boolean printInvisible) {
-        return super.formatAnnotationString(annos, /* printInvisible= */ false);
-      }
-    };
   }
 
   @Override
