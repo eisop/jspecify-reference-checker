@@ -81,37 +81,53 @@ public final class NullSpecChecker extends BaseTypeChecker {
     return "nullness";
   }
 
-  /*
-   * We skip a class or method annotated with @SuppressWarnings("nullness") entirely. This is in
-   * contrast to the default CF approach, which is to continue to process code but not report
-   * warnings.
+  /**
+   * Returns true for a class annotated with {@code @SuppressWarnings("nullness")}, and for the
+   * classes that CF itself skips.
    *
-   * The advantage to our approach is that, if our checker crashes or takes a long time for a given
-   * piece of code (perhaps especially *generated* code), users can easily disable checking for that
-   * code.
+   * <p>We skip a class or method annotated with {@code @SuppressWarnings("nullness")} entirely.
+   * This is in contrast to the default CF approach, which is to continue to process code but not
+   * report warnings.
    *
-   * Why does CF behave the way it does? I'm hoping that it's mostly because its infrastructure
+   * <p>The advantage to our approach is that, if our checker crashes or takes a long time for a
+   * given piece of code (perhaps especially <i>generated</i> code), users can easily disable
+   * checking for that code.
+   *
+   * <p>Why does CF behave the way it does? I'm hoping that it's mostly because its infrastructure
    * doesn't want to make assumptions about what kinds of warnings a given checker can produce. We,
-   * by contrast, have implemented getSuppressWarningsPrefixes() to make *all* our warnings
-   * suppressible with @SuppressWarnings("nullness").
+   * by contrast, have implemented {@link #getSuppressWarningsPrefixes()} to make <i>all</i> our
+   * warnings suppressible with {@code @SuppressWarnings("nullness")}.
    *
-   * But I do worry a little that the checker needs to do *some* processing of a class tree so that
-   * it can use that information when it checks *other* classes. If so, then skipping it could be
-   * trouble. But I'm cautiously optimistic that, since we never visit *trees* at all for
-   * *classpath* dependencies, we can get away without visiting them for *source* dependencies, too.
+   * <p>But I do worry a little that the checker needs to do <i>some</i> processing of a class tree
+   * so that it can use that information when it checks <i>other</i> classes. If so, then skipping
+   * it could be trouble. But I'm cautiously optimistic that, since we never visit <i>trees</i> at
+   * all for <i>classpath</i> dependencies, we can get away without visiting them for <i>source</i>
+   * dependencies, too.
    *
-   * BaseTypeVisitor.visitClass consults shouldSkipDefs(ClassTree) before the type factory's
-   * preProcessClassTree (which runs dataflow), processClassTree and postProcessClassTree, and
-   * visitMethod consults shouldSkipDefs(MethodTree) before processMethodTree. NullSpecVisitor also
-   * short-circuits visitVariable, for which there is no such hook.
+   * <p>{@code BaseTypeVisitor.visitClass} consults this method before the type factory's {@code
+   * preProcessClassTree} (which runs dataflow), {@code processClassTree} and {@code
+   * postProcessClassTree}, and {@code visitMethod} consults {@link #shouldSkipDefs(MethodTree)}
+   * before {@code processMethodTree}. {@code NullSpecVisitor.visitVariable} also returns early for
+   * a variable annotated with {@code @SuppressWarnings("nullness")}; CF has no such hook for
+   * variables.
+   *
+   * @param tree a class
+   * @return true if the class is not checked
    */
-
   @Override
   public boolean shouldSkipDefs(ClassTree tree) {
     return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
         || super.shouldSkipDefs(tree);
   }
 
+  /**
+   * Returns true for a method annotated with {@code @SuppressWarnings("nullness")}, and for the
+   * methods that CF itself skips. See {@link #shouldSkipDefs(ClassTree)} for why such a method is
+   * skipped entirely.
+   *
+   * @param tree a method
+   * @return true if the method is not checked
+   */
   @Override
   public boolean shouldSkipDefs(MethodTree tree) {
     return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
