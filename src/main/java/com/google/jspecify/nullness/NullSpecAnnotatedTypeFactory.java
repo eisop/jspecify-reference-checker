@@ -908,29 +908,24 @@ final class NullSpecAnnotatedTypeFactory
      *
      * - CF puts an annotation written on a usage on its bounds too: in `@NullnessUnspecified T`,
      * where `T extends @Nullable Object`, the upper bound of the usage is `@NullnessUnspecified
-     * Object`. That is how CF represents an annotated type-variable usage, not a bug, so we need
-     * the declaration for such a usage, also inside another type variable's bound, as in
-     * `S extends @NullnessUnspecified T`. Without the re-read, 13 lines of the JSpecify samples
-     * (such as TypeVariableUnspecToObject.java and DereferenceTypeVariable.java) lose their
-     * expected diagnostic.
+     * Object`. This also happens inside another type variable's bound, as in `S extends
+     * @NullnessUnspecified T`. Samples such as TypeVariableUnspecToObject.java and
+     * DereferenceTypeVariable.java depend on reading the declaration here.
      *
      * - A usage created from a javac TypeMirror (the supertypes of a class whose tree is gone, the
-     * method types of a class from bytecode, the ground target type of a method reference) had only
-     * defaulted bounds, so `T extends @Nullable Object` read as `T extends Object`; this broke
-     * tests/regression (ClassCastMethodReference.java) and the conformance sample
-     * implementWithNullableTypeArgument/User.java. https://github.com/eisop/checker-framework/pull/2472
-     * fixes that.
+     * method types of a class from bytecode, the ground target type of a method reference) has only
+     * defaulted bounds, so `T extends @Nullable Object` reads as `T extends Object` there; see
+     * tests/regression/ClassCastMethodReference.java and the conformance sample
+     * implementWithNullableTypeArgument/User.java.
      *
-     * - The bounds of a usage were defaulted with the defaults in scope at the usage, so a type
-     * variable declared in unmarked code but used in a @NullMarked class got null-marked bounds;
-     * this breaks five samples lines, such as
+     * - A usage's bounds are defaulted with the defaults in scope at the usage, so a type variable
+     * declared in unmarked code but used in a @NullMarked class gets null-marked bounds; see
      * NullMarkedDirectUseOfNotNullMarkedBoundedTypeVariable.java.
-     * https://github.com/eisop/checker-framework/pull/2480 fixes that (eisop/checker-framework#2478).
      *
-     * (We once suspected https://github.com/eisop/checker-framework/issues/737; it is fixed, and the
-     * re-read is still needed.) Even with both CF fixes, the first reason remains, so we always use the
-     * declaration: getAnnotatedType(Element) caches its result, so this costs little. The
-     * exception is a bound computed by capture conversion; see `pastCapture`.
+     * The first reason is how CF represents an annotated type-variable usage, so reading the
+     * declaration stays necessary even if CF gives every usage its declaration's bounds.
+     * getAnnotatedType(Element) caches its result, so this costs little. The exception is a bound
+     * computed by capture conversion; see `pastCapture`.
      */
     Element typeParameterElement = null;
     if (type instanceof AnnotatedTypeVariable
