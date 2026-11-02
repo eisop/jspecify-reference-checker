@@ -49,6 +49,7 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
+import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
@@ -58,6 +59,7 @@ import org.checkerframework.dataflow.cfg.node.ExplicitThisNode;
 import org.checkerframework.dataflow.cfg.node.FieldAccessNode;
 import org.checkerframework.dataflow.cfg.node.ImplicitThisNode;
 import org.checkerframework.dataflow.cfg.node.InstanceOfNode;
+import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.cfg.node.NotEqualNode;
@@ -87,6 +89,27 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     minusNull = util.minusNull;
     nullnessOperatorUnspecified = util.nullnessOperatorUnspecified;
     unionNull = util.unionNull;
+  }
+
+  /**
+   * Returns the value of a local variable or parameter from the store, if it has one, even if that
+   * is less specific than the variable's declared type. CF takes the more specific of the two, but
+   * a null check deliberately widens a variable: after {@code x == null}, {@code x} is
+   * null-inclusive in the branch where the check holds, even if {@code x} is declared non-null (see
+   * {@link #overwriteWithUnionNull(Node, NullSpecStore)}). An assignment also stores the assigned
+   * value: it is checked against the declared type, and if that is reported, the uses after it
+   * should see the value that was actually assigned. Every other value in the store refines the
+   * declared type.
+   */
+  @Override
+  public TransferResult<CFValue, NullSpecStore> visitLocalVariable(
+      LocalVariableNode node, TransferInput<CFValue, NullSpecStore> input) {
+    NullSpecStore store = input.getRegularStore();
+    CFValue valueFromStore = store.getValue(node);
+    if (valueFromStore == null) {
+      return super.visitLocalVariable(node, input);
+    }
+    return new RegularTransferResult<>(finishValue(valueFromStore, store), store);
   }
 
   @Override
