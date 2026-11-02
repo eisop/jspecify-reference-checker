@@ -62,5 +62,13 @@ class IntersectionBoundOrder {
     ((@Nullable Object & Lib) o).toString();
     // :: error: (dereference)
     ((Lib & @Nullable Lib2) o).toString();
+    // :: error: (dereference)
+    ((Lib & Lib2) o).toString();
+  }
+
+  // A written annotation on every bound decides, whatever the operand's nullness.
+  void castAllNullable(Object o) {
+    // :: error: (dereference)
+    ((@Nullable Lib & @Nullable Lib2) o).toString();
   }
 }
