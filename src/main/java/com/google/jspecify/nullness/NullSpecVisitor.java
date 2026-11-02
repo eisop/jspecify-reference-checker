@@ -79,6 +79,7 @@ import org.checkerframework.common.basetype.TypeValidator;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedIntersectionType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
 import org.checkerframework.framework.type.AnnotatedTypeParameterBounds;
 import org.checkerframework.framework.util.typeinference8.InferenceResult;
@@ -551,6 +552,17 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     checkNoNullnessAnnotations(tree, tree.getAnnotations(), "type.parameter.annotated");
     return super.visitTypeParameter(tree, p);
   }
+
+  /**
+   * Does nothing. CF warns when a bound's written qualifier differs from the intersection's
+   * summary, because by default the first bound wins and the others are ignored. Here every bound
+   * counts: the summary is their greatest lower bound (see {@link
+   * NullSpecAnnotatedTypeFactory#combineIntersectionBoundAnnotationsInHierarchy}), so the
+   * intersection is a subtype of what each bound says, and no written qualifier is ignored.
+   */
+  @Override
+  protected void checkExplicitAnnotationsOnIntersectionBounds(
+      AnnotatedIntersectionType intersection, List<? extends Tree> boundTrees) {}
 
   @Override
   public Void visitAnnotatedType(AnnotatedTypeTree tree, Void p) {
