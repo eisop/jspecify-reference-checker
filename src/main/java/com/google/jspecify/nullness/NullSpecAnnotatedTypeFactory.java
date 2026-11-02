@@ -902,23 +902,30 @@ final class NullSpecAnnotatedTypeFactory
       AnnotatedTypeMirror type, boolean perElementBounds, boolean pastCapture) {
     /*
      * In the case of a type-variable usage, we ignore the bounds attached to it in favor of the
-     * bounds on the type-parameter declaration. This is necessary in certain cases.
+     * bounds on the type-parameter declaration. Whether a type variable is null-inclusive or
+     * null-exclusive under every parameterization depends on its declared bounds, and a usage's
+     * bounds can differ from them:
      *
-     * I won't claim to understand *why* it will be necessary. Maybe the bounds aren't getting
-     * copied from the declaration to the usage correctly. Or maybe they're getting copied but then
-     * CF is mutating/replacing them (since it seems to update *bounds* based on annotations on the
-     * *usage* in some cases -- though we've tried to short-circuit that).
+     * - CF puts an annotation written on a usage on its bounds too: in `@NullnessUnspecified T`,
+     * where `T extends @Nullable Object`, the upper bound of the usage is `@NullnessUnspecified
+     * Object`. This also happens inside another type variable's bound, as in `S extends
+     * @NullnessUnspecified T`. Samples such as TypeVariableUnspecToObject.java and
+     * DereferenceTypeVariable.java depend on reading the declaration here.
      *
-     * In any case, in our model for nullness checking, we usually want to look at the original
-     * bounds. So whatever the reason we have different bounds here, we don't want them -- except
-     * when `pastCapture` says this bound was computed by capture conversion, not copied from a
-     * declaration; see that parameter's Javadoc.
+     * - A usage created from a javac TypeMirror (the supertypes of a class whose tree is gone, the
+     * method types of a class from bytecode, the ground target type of a method reference) has only
+     * defaulted bounds, so `T extends @Nullable Object` reads as `T extends Object` there; see
+     * tests/regression/ClassCastMethodReference.java and the conformance sample
+     * implementWithNullableTypeArgument/User.java.
      *
-     * My only worry is that I always worry about making calls to getAnnotatedType, as discussed in
-     * various comments in this file (e.g., in NullSpecTreeAnnotator.visitMethodInvocation).
+     * - A usage's bounds are defaulted with the defaults in scope at the usage, so a type variable
+     * declared in unmarked code but used in a @NullMarked class gets null-marked bounds; see
+     * NullMarkedDirectUseOfNotNullMarkedBoundedTypeVariable.java.
      *
-     * This is likely caused by https://github.com/eisop/checker-framework/issues/737.
-     * Revisit this once that issue is fixed.
+     * The first reason is how CF represents an annotated type-variable usage, so reading the
+     * declaration stays necessary even if CF gives every usage its declaration's bounds.
+     * getAnnotatedType(Element) caches its result, so this costs little. The exception is a bound
+     * computed by capture conversion; see `pastCapture`.
      */
     Element typeParameterElement = null;
     if (type instanceof AnnotatedTypeVariable
