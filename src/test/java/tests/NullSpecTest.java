@@ -117,14 +117,44 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
     // Aliases to lists in testResult - side-effecting the returned value.
     List<TestDiagnostic> missing = testResult.getMissingDiagnostics();
 
-    missing.removeIf(m -> m.getMessage().contains("jspecify_but_expect_nothing"));
-    if (!strict) {
-      // Filter out all errors due to limited information
-      missing.removeIf(m -> m.getMessage().contains("jspecify_but_expect_warning"));
-      missing.removeIf(
-          m ->
-              m.getMessage().contains("jspecify_nullness_not_enough_information")
-                  && !m.getMessage().contains("jspecify_but_expect_error"));
+    /*
+     * A "jspecify_but_expect_*" marker names an outcome that this checker may produce instead of
+     * the one that the specification calls for (the directive's other keys, or nothing if it has
+     * none). Either outcome is acceptable. Each outcome either reports an error in this mode or
+     * not: "jspecify_nullness_mismatch" and "jspecify_but_expect_error" always do;
+     * "jspecify_nullness_not_enough_information" and "jspecify_but_expect_warning" do in strict
+     * mode only, where limited information is reported as an error; "jspecify_but_expect_nothing"
+     * never does. So such a directive requires an error only if both outcomes report one, and a
+     * reported error that it matches is acceptable if either outcome reports one.
+     */
+    List<TestDiagnostic> optional = new ArrayList<>();
+    for (ListIterator<TestDiagnostic> i = missing.listIterator(); i.hasNext(); ) {
+      TestDiagnostic m = i.next();
+      String message = m.getMessage();
+      boolean alternativeIsError;
+      if (message.contains("jspecify_but_expect_nothing")) {
+        alternativeIsError = false;
+      } else if (message.contains("jspecify_but_expect_warning")) {
+        alternativeIsError = strict;
+      } else if (message.contains("jspecify_but_expect_error")) {
+        alternativeIsError = true;
+      } else {
+        // No marker: the directive is required, except for limited information when not strict.
+        if (!strict && message.contains("jspecify_nullness_not_enough_information")) {
+          i.remove();
+        }
+        continue;
+      }
+      boolean specifiedIsError =
+          message.contains("jspecify_nullness_mismatch")
+              || (strict && message.contains("jspecify_nullness_not_enough_information"));
+      if (specifiedIsError && alternativeIsError) {
+        continue;
+      }
+      i.remove();
+      if (specifiedIsError || alternativeIsError) {
+        optional.add(m);
+      }
     }
 
     List<TestDiagnostic> unexpected = testResult.getUnexpectedDiagnostics();
@@ -149,6 +179,9 @@ abstract class NullSpecTest extends CheckerFrameworkPerDirectoryTest {
     }
     for (TestDiagnostic u : origUnexpected) {
       missing.removeIf(m -> corresponds(m, u));
+    }
+    for (TestDiagnostic m : optional) {
+      unexpected.removeIf(u -> corresponds(m, u));
     }
 
     return testResult;
