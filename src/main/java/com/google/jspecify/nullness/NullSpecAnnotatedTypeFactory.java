@@ -43,7 +43,6 @@ import static org.checkerframework.javacutil.TypesUtils.isCapturedTypeVariable;
 import static org.checkerframework.javacutil.TypesUtils.isPrimitive;
 
 import com.sun.source.tree.BinaryTree;
-import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
@@ -111,6 +110,7 @@ import org.checkerframework.framework.util.DefaultQualifierKindHierarchy;
 import org.checkerframework.framework.util.NoContractsFromMethod;
 import org.checkerframework.framework.util.QualifierKindHierarchy;
 import org.checkerframework.framework.util.defaults.QualifierDefaults;
+import org.checkerframework.framework.util.visualize.TypeInformationPresenter;
 import org.checkerframework.javacutil.AnnotationBuilder;
 
 final class NullSpecAnnotatedTypeFactory
@@ -135,8 +135,6 @@ final class NullSpecAnnotatedTypeFactory
   private final NullSpecAnnotatedTypeFactory withMostConvenientWorld;
 
   private final AnnotatedDeclaredType javaUtilCollection;
-
-  private final ConformanceTypeInformationPresenter conformanceInformationPresenter;
 
   final AnnotatedDeclaredType javaLangClass;
   final AnnotatedDeclaredType javaLangThreadLocal;
@@ -346,9 +344,6 @@ final class NullSpecAnnotatedTypeFactory
       withLeastConvenientWorld = withOtherWorld;
       withMostConvenientWorld = this;
     }
-
-    conformanceInformationPresenter =
-        checker.hasOption("showTypes") ? new ConformanceTypeInformationPresenter(this) : null;
 
     if (!givenOtherWorld) {
       /*
@@ -2176,33 +2171,38 @@ final class NullSpecAnnotatedTypeFactory
     }
   }
 
+  /**
+   * Returns false: never write computed annotations into bytecode (or even into the in-memory javac
+   * Element objects).
+   *
+   * <p>We don't want to write computed annotations to bytecode because we don't want for checkers
+   * (including this one!) to depend on those annotations. All core JSpecify nullness information
+   * should be derivable from the originally written annotations.
+   *
+   * <p>(We especially don't want to write {@code @MinusNull} to bytecode, since it is an
+   * implementation detail of this current checker implementation.)
+   *
+   * <p>"Computed annotations" includes not only annotations added from defaults but also any
+   * {@code @Inherited}/{@code @InheritedAnnotation} declaration annotations copied from supertypes.
+   * We may or may not even want to support inheritance (<a
+   * href="https://github.com/jspecify/jspecify/issues/155">jspecify#155</a>). But even if we do, we
+   * wouldn't want to produce different bytecode than a stock compiler, lest tools rely on it.
+   *
+   * <p>Additionally, when I was letting CF write computed annotations into bytecode, I ran into a
+   * {@code type.invalid.conflicting.annos} error, which I have described more in <a
+   * href="https://github.com/jspecify/jspecify-reference-checker/commit/d16a0231487e239bc94145177de464b5f77c8b19">commit
+   * d16a023</a>.
+   *
+   * @return false
+   */
   @Override
-  public void postProcessClassTree(ClassTree tree) {
-    /*
-     * To avoid writing computed annotations into bytecode (or even into the in-memory javac Element
-     * objects), do not call the supermethod.
-     *
-     * We don't want to write computed annotations to bytecode because we don't want for checkers
-     * (including this one!) to depend on those annotations. All core JSpecify nullness information
-     * should be derivable from the originally written annotations.
-     *
-     * (We especially don't want to write @MinusNull to bytecode, since it is an implementation
-     * detail of this current checker implementation.)
-     *
-     * "Computed annotations" includes not only annotations added from defaults but also any
-     * @Inherited/@InheritedAnnotation declaration annotations copied from supertypes. We may or may
-     * not even want to support inheritance (https://github.com/jspecify/jspecify/issues/155). But
-     * even if we do, we wouldn't want to produce different bytecode than a stock compiler, lest
-     * tools rely on it.
-     *
-     * Additionally, when I was letting CF write computed annotations into bytecode, I ran into an
-     * type.invalid.conflicting.annos error, which I have described more in
-     * https://github.com/jspecify/jspecify-reference-checker/commit/d16a0231487e239bc94145177de464b5f77c8b19
-     */
+  protected boolean shouldStoreInBytecode() {
+    return false;
+  }
 
-    if (conformanceInformationPresenter != null) {
-      conformanceInformationPresenter.process(tree, getPath(tree));
-    }
+  @Override
+  protected @Nullable TypeInformationPresenter createTypeInformationPresenter() {
+    return checker.hasOption("showTypes") ? new ConformanceTypeInformationPresenter(this) : null;
   }
 
   @Override
