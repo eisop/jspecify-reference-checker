@@ -51,6 +51,7 @@ import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
@@ -1336,6 +1337,19 @@ final class NullSpecAnnotatedTypeFactory
   public NullSpecTransfer createFlowTransferFunction(
       CFAbstractAnalysis<CFValue, NullSpecStore, NullSpecTransfer> analysis) {
     return new NullSpecTransfer(analysis, util);
+  }
+
+  /**
+   * Makes the result of a class instance creation non-null. For an anonymous class, CF takes the
+   * least upper bound of the anonymous class's type, as a use, and the result of the superclass
+   * constructor, and in null-unmarked code that use is unspecified.
+   */
+  @Override
+  protected ParameterizedExecutableType constructorFromUse(
+      NewClassTree tree, boolean inferTypeArgs) {
+    ParameterizedExecutableType result = super.constructorFromUse(tree, inferTypeArgs);
+    result.executableType.getReturnType().replaceAnnotation(minusNull);
+    return result;
   }
 
   @Override
