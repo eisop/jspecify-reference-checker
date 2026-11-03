@@ -1035,7 +1035,12 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     if (existing == null) {
       return true;
     }
-    // Neither is MinusNull, and there is a target: take it.
+    /*
+     * Neither value is MinusNull: take the target (or the absence of one), even when the existing
+     * value is more specific. Keeping a more specific existing value, one whose greatest lower bound
+     * with the target is itself, loses expected diagnostics in the NullCheck* samples, such as
+     * NullCheck.java and NullCheckTypeVariable.java.
+     */
     return false;
   }
 
