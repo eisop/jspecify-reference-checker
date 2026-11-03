@@ -1365,7 +1365,17 @@ final class NullSpecAnnotatedTypeFactory
   @Override
   public AnnotatedDeclaredType getSelfType(Tree tree) {
     AnnotatedDeclaredType superResult = super.getSelfType(tree);
-    return superResult == null ? null : withMinusNull(superResult);
+    if (superResult == null) {
+      return null;
+    }
+    AnnotatedDeclaredType selfType = withMinusNull(superResult);
+    // The type of `Outer.this` is an enclosing type of the type of `this` (see getEnclosingType).
+    for (AnnotatedDeclaredType enclosing = selfType.getEnclosingType();
+        enclosing != null;
+        enclosing = enclosing.getEnclosingType()) {
+      enclosing.replaceAnnotation(minusNull);
+    }
+    return selfType;
   }
 
   @Override

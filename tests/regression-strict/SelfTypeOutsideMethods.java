@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// `this` is never null, also in field initializers and initializer blocks of null-unmarked code,
-// where there is no receiver parameter to give it a type.
+// `this` and `Outer.this` are never null, also in field initializers and initializer blocks of
+// null-unmarked code, where there is no receiver parameter to give them a type.
 
 import org.jspecify.annotations.NullMarked;
 
@@ -23,6 +23,30 @@ class SelfTypeOutsideMethods {
 
   {
     Lib.take(this);
+  }
+
+  Runnable lambda = () -> Lib.take(this);
+
+  {
+    new Object() {
+      Object inner = this.toString();
+
+      {
+        Lib.take(this);
+      }
+    };
+  }
+
+  class Inner {
+    Object outer = SelfTypeOutsideMethods.this.toString();
+
+    {
+      Lib.take(SelfTypeOutsideMethods.this);
+    }
+  }
+
+  static class Nested {
+    Object self = this.toString();
   }
 
   @NullMarked
