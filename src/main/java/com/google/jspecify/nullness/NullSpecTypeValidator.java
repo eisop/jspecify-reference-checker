@@ -135,7 +135,7 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
    * checker's "strict mode" subtyping, where {@code unspecified <: unspecified} is "not enough
    * information" -- so it spuriously rejects, e.g., {@code Lib<@NullnessUnspecified ?>} alongside
    * the intended {@code wildcard.annotated} error. The superclass's other checks are unaffected,
-   * including the JDK-8054309 check below.
+   * including its JDK-8054309 check.
    *
    * <p>TODO: this and {@link NullSpecVisitor#shouldCheckTypeArgument}'s wildcard-capture skip
    * together leave nothing checking a source-written wildcard's bound for containment in the type
@@ -144,28 +144,5 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
    */
   @Override
   protected void checkCapturedWildcardBounds(
-      AnnotatedDeclaredType type, AnnotatedDeclaredType capturedType, ParameterizedTypeTree tree) {}
-
-  /**
-   * Does nothing: skips the superclass's JDK-8054309 "collapsed wildcard" check, which has no
-   * counterpart in the JSpecify specification.
-   *
-   * <p>The superclass reports {@code type.invalid.super.wildcard} when a wildcard's super bound is
-   * the same base type as the type parameter's upper bound but differently annotated, because javac
-   * then reuses the bound instead of creating a fresh type variable (<a
-   * href="https://bugs.openjdk.org/browse/JDK-8054309">JDK-8054309</a>), losing its annotations.
-   * That's a javac representation quirk, not a spec rule: per JLS 5.1.10 capture conversion (all
-   * the spec adds to), the type converts to an ordinary, well-formed fresh type variable instead.
-   *
-   * <p>Skipping the check doesn't add unsoundness, just stops flagging that quirk; it does mean a
-   * few reads (e.g. of {@code Lib<? super Object>}'s members) see the javac-collapsed, non-null
-   * bound rather than the capture's true nullable one -- a gap that needs modeling the fresh type
-   * variable javac declined to create (compare {@link #checkCapturedWildcardBounds} above).
-   * Overriding {@code areCollapsedWildcardBoundsEqual} instead doesn't help either: our qualifier
-   * hierarchy isn't antisymmetric, so its bidirectional-subtype test can't mean "same qualifier"
-   * here.
-   */
-  @Override
-  protected void checkExplicitSuperBoundWildcards(
       AnnotatedDeclaredType type, AnnotatedDeclaredType capturedType, ParameterizedTypeTree tree) {}
 }
