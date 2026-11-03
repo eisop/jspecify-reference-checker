@@ -1025,7 +1025,11 @@ final class NullSpecAnnotatedTypeFactory
       return arePrimaryAnnosEqual(type1, type2) && super.visitWildcard_Wildcard(type1, type2, p);
     }
 
-    /** Compares the primary nullness of two types of different kinds. */
+    /**
+     * Compares the primary nullness of two types of different kinds for which the supertype has no
+     * visitor. Its visitors for a boxed type and its primitive type, and for a captured type
+     * variable and a declared type, apply our nullness rules through {@link #arePrimaryAnnosEqual}.
+     */
     @Override
     public Boolean defaultAction(AnnotatedTypeMirror type1, AnnotatedTypeMirror type2, Void p) {
       return arePrimaryAnnosEqual(type1, type2);
