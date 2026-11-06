@@ -586,20 +586,9 @@ final class NullSpecAnnotatedTypeFactory
       return new NullSpecEqualityComparer(areEqualVisitHistory);
     }
 
-    /**
-     * The supertype of the innermost active call to {@link #visitTypeArgs}, or null. The superclass
-     * compares the type arguments of enclosing types by calling {@link #visitTypeArgs} on the
-     * enclosing types, so a call whose supertype is the enclosing type of this one is such a
-     * comparison.
-     */
-    private @Nullable AnnotatedDeclaredType activeSupertype = null;
-
     @Override
-    protected boolean visitTypeArgs(
-        AnnotatedDeclaredType subtype,
-        AnnotatedDeclaredType supertype,
-        boolean subtypeRaw,
-        boolean supertypeRaw) {
+    protected boolean visitEnclosingTypeArgs(
+        AnnotatedDeclaredType subtypeEnclosing, AnnotatedDeclaredType supertypeEnclosing) {
       /*
        * Since CF compares the type arguments of enclosing types, `Outer<T>.Nested` is not a subtype
        * of itself in strict mode if `T` has unspecified nullness: `T` is not equal to itself. For
@@ -608,17 +597,11 @@ final class NullSpecAnnotatedTypeFactory
        * for the type arguments of a type itself, for which the samples expect errors (see
        * ComplexParametric and SameTypeTypeVariable).
        */
-      AnnotatedDeclaredType outerSupertype = activeSupertype;
       boolean wasComparingEnclosing = comparingEnclosingTypeArgs;
-      @SuppressWarnings("ReferenceEquality")
-      boolean isEnclosing =
-          outerSupertype != null && outerSupertype.getEnclosingType() == supertype;
-      activeSupertype = supertype;
-      comparingEnclosingTypeArgs = isEnclosing;
+      comparingEnclosingTypeArgs = true;
       try {
-        return super.visitTypeArgs(subtype, supertype, subtypeRaw, supertypeRaw);
+        return super.visitEnclosingTypeArgs(subtypeEnclosing, supertypeEnclosing);
       } finally {
-        activeSupertype = outerSupertype;
         comparingEnclosingTypeArgs = wasComparingEnclosing;
       }
     }
