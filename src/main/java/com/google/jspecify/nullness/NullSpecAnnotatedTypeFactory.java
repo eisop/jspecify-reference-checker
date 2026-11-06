@@ -394,9 +394,17 @@ final class NullSpecAnnotatedTypeFactory
 
   /**
    * Applies inferred types to the declared types, also where the inferred type is not a subtype of
-   * the declared type. Created when first needed, after the qualifier hierarchy exists.
+   * the declared type. Initialized in {@link #postInit()}, once the qualifier hierarchy exists.
    */
   private DefaultInferredTypesApplier wideningInferredTypesApplier;
+
+  @Override
+  protected void postInit() {
+    super.postInit();
+    wideningInferredTypesApplier =
+        new DefaultInferredTypesApplier(
+            /* omitSubtypingCheck= */ true, getQualifierHierarchy(), this);
+  }
 
   /**
    * {@inheritDoc}
@@ -410,11 +418,6 @@ final class NullSpecAnnotatedTypeFactory
    */
   @Override
   protected void applyInferredAnnotations(AnnotatedTypeMirror type, CFValue inferred) {
-    if (wideningInferredTypesApplier == null) {
-      wideningInferredTypesApplier =
-          new DefaultInferredTypesApplier(
-              /* omitSubtypingCheck= */ true, getQualifierHierarchy(), this);
-    }
     wideningInferredTypesApplier.applyInferredType(
         type, inferred.getAnnotations(), inferred.getUnderlyingType());
   }
