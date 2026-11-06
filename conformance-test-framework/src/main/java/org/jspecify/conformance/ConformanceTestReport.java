@@ -199,11 +199,10 @@ public final class ConformanceTestReport {
       ImmutableListMultimap<Long, ReportedFact> reportedFactsByLine =
           index(reportedFacts.get(file), ReportedFact::getLineNumber);
       return expectedFactsInFile.stream()
-          .flatMap(
-              expectedFact ->
-                  reportedFactsByLine.get(expectedFact.getLineNumber()).stream()
-                      .filter(reportedFact -> reportedFact.matches(expectedFact))
-                      .map(reportedFact -> immutableEntry(expectedFact, reportedFact)));
+          .flatMap(expectedFact ->
+              reportedFactsByLine.get(expectedFact.getLineNumber()).stream()
+                  .filter(reportedFact -> reportedFact.matches(expectedFact))
+                  .map(reportedFact -> immutableEntry(expectedFact, reportedFact)));
     }
 
     /** Builds the report. */
