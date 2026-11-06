@@ -887,12 +887,41 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     boolean storeChanged = false;
     if (isNullLiteral(node.getLeftOperand())) {
       storeChanged |= refineNonNull(node.getRightOperand(), storeForNonNull);
-      storeChanged |= overwriteWithUnionNull(node.getRightOperand(), storeForNull);
+      storeChanged |= storeNull(node.getRightOperand(), storeForNull);
     } else if (isNullLiteral(node.getRightOperand())) {
       storeChanged |= refineNonNull(node.getLeftOperand(), storeForNonNull);
-      storeChanged |= overwriteWithUnionNull(node.getLeftOperand(), storeForNull);
+      storeChanged |= storeNull(node.getLeftOperand(), storeForNull);
     }
     return storeChanged;
+  }
+
+  /**
+   * Records in the store for the branch where {@code node} is null that it is null, and returns
+   * whether this is a change in its value.
+   *
+   * <p>There is no qualifier for "null", so the store holds the least type that includes it. For a
+   * local variable whose declared type may already include null, such as a type variable with a
+   * nullable bound, that is the declared type, so the store forgets the variable's value: in the
+   * branch the variable has its declared type, and after the branches merge, its declared type
+   * again rather than the union of its type with null. Otherwise the store holds unionNull, even if
+   * the declared type is null-exclusive.
+   */
+  private boolean storeNull(Node node, NullSpecStore store) {
+    if (node instanceof LocalVariableNode) {
+      AnnotatedTypeMirror declaredType =
+          atypeFactory.getAnnotatedType(((LocalVariableNode) node).getElement());
+      if (!atypeFactory
+          .withMostConvenientWorld()
+          .isNullExclusiveUnderEveryParameterization(declaredType)) {
+        JavaExpression expression = expressionToStoreFor(node);
+        if (store.getValue(expression) == null) {
+          return false;
+        }
+        store.clearValue(expression);
+        return true;
+      }
+    }
+    return overwriteWithUnionNull(node, store);
   }
 
   /** Marks the node as non-null, and returns whether this is a change in its value. */

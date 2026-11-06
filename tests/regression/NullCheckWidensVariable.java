@@ -13,10 +13,11 @@
 // limitations under the License.
 
 // A null check can make a variable null-inclusive even if its declared type is null-exclusive: in
-// the branch where `o == null` holds, `o` is null. The variable's value after the check, not its
-// declared type, decides whether a use is reported. So does the value of an assignment, even one
-// that is itself reported. See the samples inputs NullCheckUnrefineNonNullable.java,
-// NullCheckTypeVariableUnrefineNonNullable.java, and AssignToCaught.java.
+// the branch where `o == null` holds, `o` is null, and after that branch it may be null. The
+// variable's value after the check, not its declared type, decides whether a use is reported. So
+// does the value of an assignment, even one that is itself reported. See the samples inputs
+// NullCheckUnrefineNonNullable.java, NullCheckTypeVariableUnrefineNonNullable.java, and
+// AssignToCaught.java.
 
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -51,6 +52,54 @@ class NullCheckWidensVariable<T> {
   Object local() {
     Object o = new Object();
     if (null == o) {
+      // :: error: return.type.incompatible
+      return o;
+    }
+    return o;
+  }
+
+  void log() {}
+
+  Object afterNullBranch(Object o) {
+    if (o == null) {
+      log();
+    }
+    // :: error: return.type.incompatible
+    return o;
+  }
+
+  Object afterThrow(Object o) {
+    if (o == null) {
+      throw new IllegalArgumentException();
+    }
+    return o;
+  }
+
+  Object afterReassignment(Object o) {
+    if (o == null) {
+      o = new Object();
+    }
+    return o;
+  }
+
+  <N extends @Nullable Object> N nullableBound(N n) {
+    if (n != null) {
+      n.hashCode();
+    }
+    return n;
+  }
+
+  <N extends @Nullable Object> Object nullableBoundInBranch(N n) {
+    if (n == null) {
+      // :: error: return.type.incompatible
+      return n;
+    }
+    return n;
+  }
+
+  Object nullableRefined(@Nullable Object o) {
+    o = new Object();
+    if (o == null) {
       // :: error: return.type.incompatible
       return o;
     }
