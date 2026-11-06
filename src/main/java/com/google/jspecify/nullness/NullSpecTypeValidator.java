@@ -139,8 +139,8 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
    *
    * <p>TODO: this and {@link NullSpecVisitor#shouldCheckTypeArgument}'s wildcard-capture skip
    * together leave nothing checking a source-written wildcard's bound for containment in the type
-   * parameter's declared bound (e.g. {@code Lib<? extends @Nullable Object>} against a non-null-
-   * bounded {@code T}); needs a containment check against the written bound.
+   * parameter's declared bound (e.g. {@code Lib<? extends @Nullable Object>} against a
+   * non-null-bounded {@code T}); needs a containment check against the written bound.
    */
   @Override
   protected void checkCapturedWildcardBounds(
