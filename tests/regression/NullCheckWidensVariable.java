@@ -97,6 +97,38 @@ class NullCheckWidensVariable<T> {
     return n;
   }
 
+  <N extends @Nullable Object> N nullableBoundAfterNullBranch(N n) {
+    if (n == null) {
+      log();
+    }
+    return n;
+  }
+
+  // A local variable's type is its value in the store, not the default for local variables.
+  <N extends @Nullable Object> N nullableBoundLocal(N n) {
+    N local = n;
+    if (local != null) {
+      local.hashCode();
+    }
+    return local;
+  }
+
+  <N extends @Nullable Object> N nullableBoundLocalAfterNullBranch(N n) {
+    N local = n;
+    if (local == null) {
+      log();
+    }
+    return local;
+  }
+
+  <N extends @Nullable Object> N nullableBoundAssignedInCheck(N n) {
+    N local;
+    if ((local = n) == null) {
+      log();
+    }
+    return local;
+  }
+
   Object nullableRefined(@Nullable Object o) {
     o = new Object();
     if (o == null) {
@@ -123,6 +155,142 @@ class NullCheckWidensVariable<T> {
       e = null;
       // :: error: dereference
       e.toString();
+    }
+  }
+
+  void caughtNullCheck() {
+    try {
+      throw new Exception();
+    } catch (Exception e) {
+      if (e == null) {
+        // :: error: dereference
+        e.toString();
+      }
+      // :: error: dereference
+      e.toString();
+    }
+  }
+
+  Object assignedNullable(Object o, @Nullable Object n) {
+    // :: error: assignment.type.incompatible
+    o = n;
+    // :: error: return.type.incompatible
+    return o;
+  }
+
+  Object negatedNotEqual(Object o) {
+    if (!(o != null)) {
+      // :: error: return.type.incompatible
+      return o;
+    }
+    return o;
+  }
+
+  Object orNullOrEmpty(String s) {
+    if (s == null || s.isEmpty()) {
+      return "";
+    }
+    return s;
+  }
+
+  Object orNullOrEmptyAfterNullBranch(String s) {
+    if (s == null || s.isEmpty()) {
+      log();
+    }
+    // :: error: return.type.incompatible
+    return s;
+  }
+
+  Object andBothNull(Object a, Object b) {
+    if (a == null && b == null) {
+      // :: error: return.type.incompatible
+      return a;
+    }
+    // Even if the condition is false, `a` may be null, but `b` is not.
+    b.hashCode();
+    // :: error: return.type.incompatible
+    return a;
+  }
+
+  Object conditionalExpression(Object o) {
+    return o == null ? "" : o;
+  }
+
+  Object conditionalExpressionAfterNullBranch(Object o) {
+    Object r = o == null ? "" : o;
+    // :: error: return.type.incompatible
+    return o;
+  }
+
+  Object patternVariable(Object o) {
+    if (o instanceof String s && s == null) {
+      // :: error: return.type.incompatible
+      return s;
+    }
+    return o;
+  }
+
+  boolean cond() {
+    return true;
+  }
+
+  // A null check later in a loop body widens the variable for the next iteration.
+  Object loop(Object o) {
+    while (cond()) {
+      // :: error: dereference
+      o.hashCode();
+      if (o == null) {
+        log();
+      }
+    }
+    // :: error: return.type.incompatible
+    return o;
+  }
+
+  Object loopContinue(Object o) {
+    while (cond()) {
+      if (o == null) {
+        continue;
+      }
+      o.hashCode();
+    }
+    // :: error: return.type.incompatible
+    return o;
+  }
+
+  Object loopThrow(Object o) {
+    while (cond()) {
+      if (o == null) {
+        throw new IllegalArgumentException();
+      }
+      o.hashCode();
+    }
+    return o;
+  }
+
+  void lambda(Object o) {
+    if (o == null) {
+      // :: error: dereference
+      Runnable r = () -> o.hashCode();
+    }
+  }
+
+  void finallyBlock(Object o) {
+    try {
+      if (o == null) {
+        throw new IllegalArgumentException();
+      }
+    } finally {
+      // :: error: dereference
+      o.hashCode();
+    }
+    o.hashCode();
+  }
+
+  void unboxing(Integer i) {
+    if (i == null) {
+      // :: error: assignment.type.incompatible
+      int j = i;
     }
   }
 }
