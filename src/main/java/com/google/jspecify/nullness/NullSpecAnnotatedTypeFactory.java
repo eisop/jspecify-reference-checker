@@ -91,6 +91,7 @@ import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedPrimitiv
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedUnionType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedWildcardType;
+import org.checkerframework.framework.type.DefaultInferredTypesApplier;
 import org.checkerframework.framework.type.DefaultTypeHierarchy;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
 import org.checkerframework.framework.type.NoElementQualifierHierarchy;
@@ -389,6 +390,36 @@ final class NullSpecAnnotatedTypeFactory
       }
       settingRoot = false;
     }
+  }
+
+  /**
+   * Applies inferred types to the declared types, also where the inferred type is not a subtype of
+   * the declared type. Initialized in {@link #postInit()}, once the qualifier hierarchy exists.
+   */
+  private DefaultInferredTypesApplier wideningInferredTypesApplier;
+
+  @Override
+  protected void postInit() {
+    super.postInit();
+    wideningInferredTypesApplier =
+        new DefaultInferredTypesApplier(
+            /* omitSubtypingCheck= */ true, getQualifierHierarchy(), this);
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>A null check can make a value's type wider than its declared type: after {@code x == null},
+   * {@code x} is null-inclusive in the branch where the check holds, even if {@code x} is declared
+   * non-null, and {@link NullSpecTransfer} records that. CF applies an inferred qualifier only if
+   * it is a subtype of the declared one, which would drop exactly this widening. So apply the
+   * inferred type without that check: a reference that may be null is reported where it is used, as
+   * the specification's samples expect.
+   */
+  @Override
+  protected void applyInferredAnnotations(AnnotatedTypeMirror type, CFValue inferred) {
+    wideningInferredTypesApplier.applyInferredType(
+        type, inferred.getAnnotations(), inferred.getUnderlyingType());
   }
 
   @Override
