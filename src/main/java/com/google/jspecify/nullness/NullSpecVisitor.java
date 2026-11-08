@@ -683,32 +683,19 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     checkNoNullnessAnnotations(
         tree, tree.getModifiers().getAnnotations(), "type.declaration.annotated");
 
-    /*
-     * A supertype reference in an extends or implements clause is always non-null -- you can't
-     * extend or implement a possibly-null type. Nothing else visits these: they're not a
-     * variable's or method's type, so visitVariable/processMethodTree never see them, and their
-     * Kind is as ordinary as any other type-use (e.g. IDENTIFIER), so visitAnnotatedType's
-     * wildcard/primitive-specific branches don't either.
-     */
-    checkSupertypeClauseNotAnnotated(tree.getExtendsClause());
-    for (Tree implementsClause : tree.getImplementsClause()) {
-      checkSupertypeClauseNotAnnotated(implementsClause);
-    }
-
     checkUninitializedFields(tree);
 
     super.processClassTree(tree);
   }
 
   /**
-   * Reports {@code supertype.annotated} if {@code clause} (an {@code extends} or {@code implements}
-   * clause, or {@code null} if the class has no {@code extends} clause) carries a nullness
-   * annotation.
+   * Reports {@code supertype.annotated} for each nullness annotation on the supertype in an {@code
+   * extends} or {@code implements} clause: you can't extend or implement a possibly-null type, so a
+   * supertype is always non-null.
    */
-  private void checkSupertypeClauseNotAnnotated(@Nullable Tree clause) {
-    if (clause != null) {
-      checkNoNullnessAnnotationsOnType(clause, clause, "supertype.annotated");
-    }
+  @Override
+  protected void checkAnnotationOnSupertype(Tree boundClause) {
+    checkNoNullnessAnnotationsOnType(boundClause, boundClause, "supertype.annotated");
   }
 
   /**
