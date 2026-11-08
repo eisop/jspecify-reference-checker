@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// A null check can make a variable null-inclusive even if its declared type is null-exclusive: in
-// the branch where `o == null` holds, `o` is null, and after that branch it may be null. The
-// variable's value after the check, not its declared type, decides whether a use is reported. So
-// does the value of an assignment, even one that is itself reported. See the samples inputs
+// A null check can make a variable or field null-inclusive even if its declared type is
+// null-exclusive: in the branch where `o == null` holds, `o` is null, and after that branch it may
+// be null. The value after the check, not the declared type, decides whether a use is reported. So
+// does the value of an assignment, even one that is itself reported. Comparing with a nullable
+// value does not make a variable or field null-inclusive. See the samples inputs
 // NullCheckUnrefineNonNullable.java, NullCheckTypeVariableUnrefineNonNullable.java, and
 // AssignToCaught.java.
 
@@ -291,6 +292,116 @@ class NullCheckWidensVariable<T> {
     if (i == null) {
       // :: error: assignment.type.incompatible
       int j = i;
+    }
+  }
+
+  // A catch parameter has no value in the store before it is compared.
+  void caughtComparedWithNullable(@Nullable Object n) {
+    try {
+      throw new Exception();
+    } catch (Exception e) {
+      if (e == n) {
+        e.toString();
+      }
+      e.toString();
+    }
+  }
+
+  Object comparedWithNullable(Object o, @Nullable Object n) {
+    if (o == n) {
+      return o;
+    }
+    return o;
+  }
+
+  Object field = new Object();
+
+  @Nullable Object nullableField;
+
+  Object fieldEqualToNull() {
+    if (field == null) {
+      // :: error: return.type.incompatible
+      return field;
+    }
+    return field;
+  }
+
+  Object fieldNotEqualToNull() {
+    if (this.field != null) {
+      return this.field;
+    }
+    // :: error: return.type.incompatible
+    return this.field;
+  }
+
+  Object fieldAfterNullBranch() {
+    if (field == null) {
+      log();
+    }
+    // :: error: return.type.incompatible
+    return field;
+  }
+
+  Object fieldAfterReassignment() {
+    if (field == null) {
+      field = new Object();
+    }
+    return field;
+  }
+
+  Object fieldOfOtherObject(NullCheckWidensVariable<T> other) {
+    if (other.field == null) {
+      // :: error: return.type.incompatible
+      return other.field;
+    }
+    return other.field;
+  }
+
+  Object fieldAssignedNullable(@Nullable Object n) {
+    // :: error: assignment.type.incompatible
+    field = n;
+    // :: error: return.type.incompatible
+    return field;
+  }
+
+  @Nullable Object find() {
+    return null;
+  }
+
+  Object fieldComparedWithNullable() {
+    if (find() == field) {
+      return field;
+    }
+    return field;
+  }
+
+  Object fieldComparedWithNullableField() {
+    if (field == nullableField) {
+      return field;
+    }
+    return field;
+  }
+
+  static class Holder<N extends @Nullable Object> {
+    N value;
+
+    Holder(N value) {
+      this.value = value;
+    }
+
+    N nullableBound() {
+      if (value != null) {
+        value.hashCode();
+      }
+      return value;
+    }
+
+    Object nullableBoundInBranch() {
+      if (value == null) {
+        // :: error: return.type.incompatible
+        return value;
+      }
+      return value;
     }
   }
 }

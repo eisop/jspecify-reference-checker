@@ -64,6 +64,7 @@ import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.cfg.node.NotEqualNode;
 import org.checkerframework.dataflow.cfg.node.StringLiteralNode;
+import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.JavaExpression;
 import org.checkerframework.dataflow.expression.LocalVariable;
 import org.checkerframework.dataflow.expression.MethodCall;
@@ -100,7 +101,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
    * {@link #storeNull(Node, TransferInput, NullSpecStore)}). An assignment also stores the assigned
    * value: it is checked against the declared type, and if that is reported, the uses after it
    * should see the value that was actually assigned. Every other update of a variable's value in
-   * the store is a refinement.
+   * the store is a refinement. {@link #visitFieldAccess} does the same for fields.
    */
   @Override
   public TransferResult<CFValue, NullSpecStore> visitLocalVariable(
@@ -113,10 +114,19 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     return new RegularTransferResult<>(finishValue(valueFromStore, store), store);
   }
 
+  /**
+   * Returns the value of a field from the store, if it has one, even if that is less specific than
+   * the field's declared type, as {@link #visitLocalVariable} does for a local variable.
+   */
   @Override
   public TransferResult<CFValue, NullSpecStore> visitFieldAccess(
       FieldAccessNode node, TransferInput<CFValue, NullSpecStore> input) {
-    TransferResult<CFValue, NullSpecStore> result = super.visitFieldAccess(node, input);
+    NullSpecStore store = input.getRegularStore();
+    CFValue valueFromStore = store.getValue(node);
+    TransferResult<CFValue, NullSpecStore> result =
+        valueFromStore == null
+            ? super.visitFieldAccess(node, input)
+            : new RegularTransferResult<>(finishValue(valueFromStore, store), store);
     if (node.getFieldName().equals("class")) {
       /*
        * TODO(cpovirk): Move our "non-dataflow" special cases out of NullSpecTransfer and into our
@@ -904,17 +914,18 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
    * whether this is a change in its value.
    *
    * <p>There is no qualifier for "null", so the store holds the least type that includes it. If the
-   * type of a local variable or parameter may already include null, such as a type variable with a
-   * nullable bound, that is the type the variable has before the comparison, so the store keeps
-   * that value: in the branch the variable keeps its type, and after the branches merge it has that
-   * type again rather than the union of its type with null. Otherwise the store holds unionNull,
-   * even if the variable is declared null-exclusive.
+   * type of a local variable, parameter, or field may already include null, such as a type variable
+   * with a nullable bound, that is the type the variable has before the comparison, so the store
+   * keeps that value: in the branch the variable keeps its type, and after the branches merge it
+   * has that type again rather than the union of its type with null. Otherwise the store holds
+   * unionNull, even if the variable is declared null-exclusive.
    */
   private boolean storeNull(
       Node node, TransferInput<CFValue, NullSpecStore> input, NullSpecStore store) {
     JavaExpression expression = expressionToStoreFor(node);
     Tree tree = node.getTree();
-    if (expression instanceof LocalVariable && tree != null) {
+    if ((expression instanceof LocalVariable || expression instanceof FieldAccess)
+        && tree != null) {
       // The type the variable has before the comparison, as refined by dataflow: the declared type
       // of a local variable is only the default for local variables, and CF's own refinement of
       // the operands of == may already have changed the variable's value in the store.
