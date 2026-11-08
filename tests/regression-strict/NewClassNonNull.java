@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The result of a class instance creation is never null, also for an anonymous class or a
-// constructor reference in null-unmarked code.
+// The result of a class instance or array creation is never null, also for an anonymous class or a
+// constructor reference in null-unmarked code. The element type of an array created there is
+// unspecified, but the array itself is non-null.
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import org.jspecify.annotations.NullMarked;
 
@@ -53,6 +55,14 @@ class NewClassNonNull {
     Lib.takeFunction(Unmarked::new);
   }
 
+  void array(int n) {
+    Lib.take(new Object[n]);
+    Lib.take(new int[n]);
+    Lib.take(new Object[] {});
+    Lib.takeIntFunction(Object[]::new);
+    Lib.takeIntFunction(int[]::new);
+  }
+
   @NullMarked
   static class Lib {
     static void take(Object o) {}
@@ -62,5 +72,7 @@ class NewClassNonNull {
     static void takeSupplier(Supplier<Object> supplier) {}
 
     static void takeFunction(Function<String, Object> function) {}
+
+    static void takeIntFunction(IntFunction<Object> function) {}
   }
 }

@@ -49,6 +49,7 @@ import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
@@ -1804,6 +1805,16 @@ final class NullSpecAnnotatedTypeFactory
     public Void visitBinary(BinaryTree tree, AnnotatedTypeMirror type) {
       type.addAnnotation(minusNull);
       return super.visitBinary(tree, type);
+    }
+
+    /**
+     * Makes the result of an array creation non-null. Otherwise, it would get the default for a use
+     * of the array type, which in null-unmarked code is unspecified.
+     */
+    @Override
+    public Void visitNewArray(NewArrayTree tree, AnnotatedTypeMirror type) {
+      type.replaceAnnotation(minusNull);
+      return super.visitNewArray(tree, type);
     }
 
     @Override
