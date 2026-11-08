@@ -15,14 +15,18 @@
 // The result of a class instance creation is never null, also for an anonymous class in
 // null-unmarked code.
 
+import java.util.ArrayList;
+import java.util.List;
 import org.jspecify.annotations.NullMarked;
 
 class NewClassNonNull {
   static class Unmarked {}
 
+  class Inner {}
+
   Object field = new Object() {};
 
-  void method() {
+  void method(NewClassNonNull outer) {
     Lib.take(new Object());
     Lib.take(new Unmarked());
     Lib.take(new Object() {});
@@ -32,10 +36,15 @@ class NewClassNonNull {
           @Override
           public void run() {}
         });
+    Lib.takeList(new ArrayList<>() {});
+    Lib.take(outer.new Inner() {});
+    new Object() {}.hashCode();
   }
 
   @NullMarked
   static class Lib {
     static void take(Object o) {}
+
+    static void takeList(List<String> list) {}
   }
 }
