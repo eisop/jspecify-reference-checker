@@ -49,6 +49,7 @@ import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Types;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
+import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
 import org.checkerframework.dataflow.analysis.TransferResult;
 import org.checkerframework.dataflow.cfg.node.AssignmentNode;
@@ -58,11 +59,14 @@ import org.checkerframework.dataflow.cfg.node.ExplicitThisNode;
 import org.checkerframework.dataflow.cfg.node.FieldAccessNode;
 import org.checkerframework.dataflow.cfg.node.ImplicitThisNode;
 import org.checkerframework.dataflow.cfg.node.InstanceOfNode;
+import org.checkerframework.dataflow.cfg.node.LocalVariableNode;
 import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
 import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.dataflow.cfg.node.NotEqualNode;
 import org.checkerframework.dataflow.cfg.node.StringLiteralNode;
+import org.checkerframework.dataflow.expression.FieldAccess;
 import org.checkerframework.dataflow.expression.JavaExpression;
+import org.checkerframework.dataflow.expression.LocalVariable;
 import org.checkerframework.dataflow.expression.MethodCall;
 import org.checkerframework.framework.flow.CFAbstractAnalysis;
 import org.checkerframework.framework.flow.CFAbstractTransfer;
@@ -89,10 +93,40 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     unionNull = util.unionNull;
   }
 
+  /**
+   * Returns the value of a local variable or parameter from the store, if it has one, even if that
+   * is less specific than the variable's declared type. CF takes the more specific of the two, but
+   * a null check deliberately widens a variable: after {@code x == null}, {@code x} is
+   * null-inclusive in the branch where the check holds, even if {@code x} is declared non-null (see
+   * {@link #storeNull(Node, TransferInput, NullSpecStore)}). An assignment also stores the assigned
+   * value: it is checked against the declared type, and if that is reported, the uses after it
+   * should see the value that was actually assigned. Every other update of a variable's value in
+   * the store is a refinement. {@link #visitFieldAccess} does the same for fields.
+   */
+  @Override
+  public TransferResult<CFValue, NullSpecStore> visitLocalVariable(
+      LocalVariableNode node, TransferInput<CFValue, NullSpecStore> input) {
+    NullSpecStore store = input.getRegularStore();
+    CFValue valueFromStore = store.getValue(node);
+    if (valueFromStore == null) {
+      return super.visitLocalVariable(node, input);
+    }
+    return new RegularTransferResult<>(finishValue(valueFromStore, store), store);
+  }
+
+  /**
+   * Returns the value of a field from the store, if it has one, even if that is less specific than
+   * the field's declared type, as {@link #visitLocalVariable} does for a local variable.
+   */
   @Override
   public TransferResult<CFValue, NullSpecStore> visitFieldAccess(
       FieldAccessNode node, TransferInput<CFValue, NullSpecStore> input) {
-    TransferResult<CFValue, NullSpecStore> result = super.visitFieldAccess(node, input);
+    NullSpecStore store = input.getRegularStore();
+    CFValue valueFromStore = store.getValue(node);
+    TransferResult<CFValue, NullSpecStore> result =
+        valueFromStore == null
+            ? super.visitFieldAccess(node, input)
+            : new RegularTransferResult<>(finishValue(valueFromStore, store), store);
     if (node.getFieldName().equals("class")) {
       /*
        * TODO(cpovirk): Move our "non-dataflow" special cases out of NullSpecTransfer and into our
@@ -828,7 +862,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     CFValue resultValue = super.visitEqualTo(node, input).getResultValue();
     NullSpecStore thenStore = input.getThenStore();
     NullSpecStore elseStore = input.getElseStore();
-    boolean storeChanged = storeNonNullAndNullIfComparesToNull(node, elseStore, thenStore);
+    boolean storeChanged = storeNonNullAndNullIfComparesToNull(node, input, elseStore, thenStore);
     return new ConditionalTransferResult<>(resultValue, thenStore, elseStore, storeChanged);
   }
 
@@ -838,7 +872,7 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     CFValue resultValue = super.visitNotEqual(node, input).getResultValue();
     NullSpecStore thenStore = input.getThenStore();
     NullSpecStore elseStore = input.getElseStore();
-    boolean storeChanged = storeNonNullAndNullIfComparesToNull(node, thenStore, elseStore);
+    boolean storeChanged = storeNonNullAndNullIfComparesToNull(node, input, thenStore, elseStore);
     return new ConditionalTransferResult<>(resultValue, thenStore, elseStore, storeChanged);
   }
 
@@ -860,16 +894,51 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
    * stores, and returns whether this is a change in its value.
    */
   private boolean storeNonNullAndNullIfComparesToNull(
-      BinaryOperationNode node, NullSpecStore storeForNonNull, NullSpecStore storeForNull) {
+      BinaryOperationNode node,
+      TransferInput<CFValue, NullSpecStore> input,
+      NullSpecStore storeForNonNull,
+      NullSpecStore storeForNull) {
     boolean storeChanged = false;
     if (isNullLiteral(node.getLeftOperand())) {
       storeChanged |= refineNonNull(node.getRightOperand(), storeForNonNull);
-      storeChanged |= overwriteWithUnionNull(node.getRightOperand(), storeForNull);
+      storeChanged |= storeNull(node.getRightOperand(), input, storeForNull);
     } else if (isNullLiteral(node.getRightOperand())) {
       storeChanged |= refineNonNull(node.getLeftOperand(), storeForNonNull);
-      storeChanged |= overwriteWithUnionNull(node.getLeftOperand(), storeForNull);
+      storeChanged |= storeNull(node.getLeftOperand(), input, storeForNull);
     }
     return storeChanged;
+  }
+
+  /**
+   * Records in the store for the branch where {@code node} is null that it is null, and returns
+   * whether this is a change in its value.
+   *
+   * <p>There is no qualifier for "null", so the store holds the least type that includes it. If the
+   * type of a local variable, parameter, or field may already include null, such as a type variable
+   * with a nullable bound, that is the type the variable has before the comparison, so the store
+   * keeps that value: in the branch the variable keeps its type, and after the branches merge it
+   * has that type again rather than the union of its type with null. Otherwise the store holds
+   * unionNull, even if the variable is declared null-exclusive.
+   */
+  private boolean storeNull(
+      Node node, TransferInput<CFValue, NullSpecStore> input, NullSpecStore store) {
+    JavaExpression expression = expressionToStoreFor(node);
+    Tree tree = node.getTree();
+    if ((expression instanceof LocalVariable || expression instanceof FieldAccess)
+        && tree != null) {
+      // The type the variable has before the comparison, as refined by dataflow: the declared type
+      // of a local variable is only the default for local variables, and CF's own refinement of
+      // the operands of == may already have changed the variable's value in the store.
+      CFValue value = input.getValueOfSubNode(node);
+      AnnotatedTypeMirror type = atypeFactory.getAnnotatedType(tree);
+      if (value != null
+          && !atypeFactory
+              .withMostConvenientWorld()
+              .isNullExclusiveUnderEveryParameterization(type)) {
+        return overwrite(expression, value, store);
+      }
+    }
+    return overwriteWithUnionNull(expression, store);
   }
 
   /** Marks the node as non-null, and returns whether this is a change in its value. */
@@ -896,14 +965,6 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
    */
   private boolean refine(JavaExpression expression, CFValue target, NullSpecStore store) {
     return refiner.update(expression, target, store);
-  }
-
-  /**
-   * Marks the node as unionNull (even if it was previously a more specific type), and returns
-   * whether this is a change in its value.
-   */
-  private boolean overwriteWithUnionNull(Node node, NullSpecStore store) {
-    return overwriteWithUnionNull(expressionToStoreFor(node), store);
   }
 
   /**
@@ -1035,22 +1096,13 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     if (existing == null) {
       return true;
     }
-    if (target == null) {
-      return false;
-    }
     /*
-     * Deliberately `==`. NoElementQualifierHierarchy.greatestLowerBoundQualifiers returns a
-     * hierarchy-owned canonical instance looked up by qualifier kind, never either input -- so
-     * `== existing` holds only when `existing` is itself already that canonical instance (i.e.
-     * came from an earlier GLB/merge, not ordinary attribution). That's an implementation
-     * accident of NoElementQualifierHierarchy, not a distinction intended here; switching to
-     * areSame makes more NullCheck* samples fail.
+     * Neither value is MinusNull: take the target (or the absence of one), even when the existing
+     * value is more specific. Keeping a more specific existing value, one whose greatest lower bound
+     * with the target is itself, loses expected diagnostics in the NullCheck* samples, such as
+     * NullCheck.java and NullCheckTypeVariable.java.
      */
-    @SuppressWarnings("ReferenceEquality")
-    boolean isCanonicalGlbInstance =
-        atypeFactory.getQualifierHierarchy().greatestLowerBoundQualifiersOnly(existing, target)
-            == existing;
-    return isCanonicalGlbInstance;
+    return false;
   }
 
   private static boolean isNullLiteral(Node node) {
