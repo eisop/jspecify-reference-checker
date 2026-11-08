@@ -19,6 +19,7 @@
 // an invocation, whether its receiver is an expression or the first parameter of its function type.
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +47,12 @@ class SpecialCasedMethodReferences {
 
   Function<List<String>, Object[]> toArrayUnbound() {
     return List::toArray;
+  }
+
+  static class StringList extends ArrayList<String> {
+    Supplier<Object[]> toArrayOfThis() {
+      return this::toArray;
+    }
   }
 
   // The elements can be null, so the array's can be too.

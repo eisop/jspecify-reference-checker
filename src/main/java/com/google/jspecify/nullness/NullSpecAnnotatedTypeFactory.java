@@ -1331,8 +1331,9 @@ final class NullSpecAnnotatedTypeFactory
      * `@NullnessUnspecified Object[]`. That's technically wrong, and what we technically *should*
      * do is probably:
      *
-     * TODO(cpovirk): Have visitMethodInvocation set the array element type to the least upper
-     * bound of the type we return and the type it already has. And add sample inputs to test.
+     * TODO(cpovirk): Have narrowReturnTypeOfSpecialCasedMethod set the array element type to the
+     * least upper bound of the type we return and the type it already has. And add sample inputs
+     * to test.
      */
     return null;
   }
