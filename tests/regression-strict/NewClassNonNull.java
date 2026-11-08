@@ -12,15 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// The result of a class instance creation is never null, also for an anonymous class in
-// null-unmarked code.
+// The result of a class instance creation is never null, also for an anonymous class or a
+// constructor reference in null-unmarked code.
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jspecify.annotations.NullMarked;
 
 class NewClassNonNull {
-  static class Unmarked {}
+  static class Unmarked {
+    Unmarked() {}
+
+    Unmarked(String s) {}
+  }
 
   class Inner {}
 
@@ -41,10 +47,20 @@ class NewClassNonNull {
     new Object() {}.hashCode();
   }
 
+  void constructorReference() {
+    Lib.takeSupplier(Object::new);
+    Lib.takeSupplier(Unmarked::new);
+    Lib.takeFunction(Unmarked::new);
+  }
+
   @NullMarked
   static class Lib {
     static void take(Object o) {}
 
     static void takeList(List<String> list) {}
+
+    static void takeSupplier(Supplier<Object> supplier) {}
+
+    static void takeFunction(Function<String, Object> function) {}
   }
 }
