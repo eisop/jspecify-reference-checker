@@ -2162,7 +2162,7 @@ final class NullSpecAnnotatedTypeFactory
          * The simple name of an anonymous class is empty. Print it as javac and CF's formatter do,
          * for example "<anonymous Outer$1>".
          */
-        Object simpleName(AnnotatedDeclaredType type) {
+        CharSequence simpleName(AnnotatedDeclaredType type) {
           Element element = type.getUnderlyingType().asElement();
           return ElementUtils.isAnonymous(element) ? element.toString() : element.getSimpleName();
         }
