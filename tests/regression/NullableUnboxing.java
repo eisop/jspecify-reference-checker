@@ -40,6 +40,15 @@ class NullableUnboxing {
     return i == j;
   }
 
+  boolean equalToNull(@Nullable Integer i) {
+    return i == null;
+  }
+
+  boolean conditionalAnd(@Nullable Boolean b) {
+    // :: error: dereference
+    return b && true;
+  }
+
   String concatenation(@Nullable Integer i) {
     return "i=" + i;
   }
@@ -110,6 +119,13 @@ class NullableUnboxing {
     switch (i) {
       default:
     }
+  }
+
+  int switchExpression(@Nullable Integer i) {
+    // :: error: dereference
+    return switch (i) {
+      default -> 0;
+    };
   }
 
   void switchOnString(@Nullable String s) {
