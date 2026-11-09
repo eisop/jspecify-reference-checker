@@ -111,6 +111,7 @@ import org.checkerframework.framework.util.QualifierKindHierarchy;
 import org.checkerframework.framework.util.defaults.QualifierDefaults;
 import org.checkerframework.framework.util.visualize.TypeInformationPresenter;
 import org.checkerframework.javacutil.AnnotationBuilder;
+import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils.MemberReferenceKind;
 
 final class NullSpecAnnotatedTypeFactory
@@ -2157,8 +2158,13 @@ final class NullSpecAnnotatedTypeFactory
               : type.hasAnnotation(nullnessOperatorUnspecified) ? "*" : "";
         }
 
-        Name simpleName(AnnotatedDeclaredType type) {
-          return type.getUnderlyingType().asElement().getSimpleName();
+        /*
+         * The simple name of an anonymous class is empty. Print it as javac and CF's formatter do,
+         * for example "<anonymous Outer$1>".
+         */
+        CharSequence simpleName(AnnotatedDeclaredType type) {
+          Element element = type.getUnderlyingType().asElement();
+          return ElementUtils.isAnonymous(element) ? element.toString() : element.getSimpleName();
         }
 
         Name simpleName(AnnotatedTypeVariable type) {
