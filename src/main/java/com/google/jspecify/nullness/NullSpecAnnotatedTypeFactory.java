@@ -34,11 +34,9 @@ import static javax.lang.model.type.TypeKind.WILDCARD;
 import static org.checkerframework.framework.util.AnnotatedTypes.areCorrespondingTypeVariables;
 import static org.checkerframework.framework.util.AnnotatedTypes.asSuper;
 import static org.checkerframework.javacutil.AnnotationUtils.areSame;
-import static org.checkerframework.javacutil.TreePathUtil.enclosingClass;
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
 import static org.checkerframework.javacutil.TreeUtils.isNullExpression;
-import static org.checkerframework.javacutil.TreeUtils.typeOf;
 import static org.checkerframework.javacutil.TypesUtils.isCapturedTypeVariable;
 import static org.checkerframework.javacutil.TypesUtils.isPrimitive;
 
@@ -51,6 +49,8 @@ import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.NewArrayTree;
+import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
@@ -91,6 +91,7 @@ import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedPrimitiv
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedUnionType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedWildcardType;
+import org.checkerframework.framework.type.DefaultInferredTypesApplier;
 import org.checkerframework.framework.type.DefaultTypeHierarchy;
 import org.checkerframework.framework.type.GenericAnnotatedTypeFactory;
 import org.checkerframework.framework.type.NoElementQualifierHierarchy;
@@ -111,6 +112,7 @@ import org.checkerframework.framework.util.defaults.QualifierDefaults;
 import org.checkerframework.framework.util.visualize.TypeInformationPresenter;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.ElementUtils;
+import org.checkerframework.javacutil.TreeUtils.MemberReferenceKind;
 
 final class NullSpecAnnotatedTypeFactory
     extends GenericAnnotatedTypeFactory<
@@ -390,6 +392,36 @@ final class NullSpecAnnotatedTypeFactory
       }
       settingRoot = false;
     }
+  }
+
+  /**
+   * Applies inferred types to the declared types, also where the inferred type is not a subtype of
+   * the declared type. Initialized in {@link #postInit()}, once the qualifier hierarchy exists.
+   */
+  private DefaultInferredTypesApplier wideningInferredTypesApplier;
+
+  @Override
+  protected void postInit() {
+    super.postInit();
+    wideningInferredTypesApplier =
+        new DefaultInferredTypesApplier(
+            /* omitSubtypingCheck= */ true, getQualifierHierarchy(), this);
+  }
+
+  /**
+   * {@inheritDoc}
+   *
+   * <p>A null check can make a value's type wider than its declared type: after {@code x == null},
+   * {@code x} is null-inclusive in the branch where the check holds, even if {@code x} is declared
+   * non-null, and {@link NullSpecTransfer} records that. CF applies an inferred qualifier only if
+   * it is a subtype of the declared one, which would drop exactly this widening. So apply the
+   * inferred type without that check: a reference that may be null is reported where it is used, as
+   * the specification's samples expect.
+   */
+  @Override
+  protected void applyInferredAnnotations(AnnotatedTypeMirror type, CFValue inferred) {
+    wideningInferredTypesApplier.applyInferredType(
+        type, inferred.getAnnotations(), inferred.getUnderlyingType());
   }
 
   @Override
@@ -1122,9 +1154,15 @@ final class NullSpecAnnotatedTypeFactory
       boolean inferTypeArgs) {
     ParameterizedExecutableType result =
         super.methodFromUse(tree, methodElt, receiverType, inferTypeArgs);
+    narrowReturnTypeOfSpecialCasedMethod(
+        tree, methodElt, receiverType, result.executableType.getReturnType());
     if (tree instanceof MemberReferenceTree) {
-      narrowClassCastReturnTypeIfArgumentIsNonNull(
-          (MemberReferenceTree) tree, result.executableType);
+      MemberReferenceTree memberReference = (MemberReferenceTree) tree;
+      narrowClassCastReturnTypeIfArgumentIsNonNull(memberReference, result.executableType);
+      if (isGetOrDefaultReferenceWithNonnullMapValuesAndDefault(
+          memberReference, methodElt, receiverType)) {
+        result.executableType.getReturnType().replaceAnnotation(minusNull);
+      }
     }
     return result;
   }
@@ -1146,6 +1184,285 @@ final class NullSpecAnnotatedTypeFactory
     if (isClassCastAppliedToNonNullableType(tree)) {
       methodType.getReturnType().replaceAnnotation(minusNull);
     }
+  }
+
+  /**
+   * Narrows the return type of a use of a method that this checker special-cases. Doing so here,
+   * where the type of each use of a method is computed, rather than in {@link
+   * NullSpecTreeAnnotator#visitMethodInvocation}, covers method references as well as invocations,
+   * and type-argument inference sees the narrowed type.
+   */
+  private void narrowReturnTypeOfSpecialCasedMethod(
+      ExpressionTree tree,
+      ExecutableElement method,
+      AnnotatedTypeMirror receiverType,
+      AnnotatedTypeMirror type) {
+    /*
+     * Unsoundly assume that copyOf and copyOfRange return an array of non-null elements. This is
+     * doubly unsound:
+     *
+     * - Both methods permit creating a larger array than the original -- and padding the result
+     * with nulls. That said, this is no worse a problem than we have with array initialization in
+     * general: We already allow users to write `Object[] o = new Object[10];`, and that has the
+     * same problem. Not to mention that we further treat arrays as covariant, so it's always
+     * possible to "break" an `Object[]` by assigning it to a `@Nullable Object[]` and writing
+     * null into it.
+     *
+     * - Even if the *input* array *already* has an element type that includes null, we *still*
+     * claim that the output array's element type does not. This could probably be fixed
+     * relatively easily, but: First, I'm always at least a little nervous about calling
+     * getAnnotatedType (or even the more lightweight fromExpression), both because I worry
+     * specifically that it might call back into this method (infinite recursion?) and generally
+     * that it might be expensive. Second, I imagine that a call to copyOf or copyOfRange is often
+     * used to "trim" uninitialized elements from the end of an array. Thus, we'd like to make
+     * the use of those methods a pleasant experience so as to encourage users to be "honest"
+     * about having a `@Nullable Object[]` at the beginning, which they convert to an `Object[]`
+     * only later.
+     *
+     * Still, we may want to revisit all this.
+     */
+    if (nameMatches(method, "Arrays", "copyOf") || nameMatches(method, "Arrays", "copyOfRange")) {
+      ((AnnotatedArrayType) type).getComponentType().replaceAnnotation(minusNull);
+    }
+
+    /*
+     * If this is a use of `Collection.toArray()`, then try to produce a more specific return
+     * type than `@Nullable Object[]`.
+     *
+     * *Ideally* we would do this not just for method invocations and method references but also
+     * for other lookups of methods, like checking whether MyList.toArray is a valid override of
+     * Collection.toArray. (That is, if MyList is restricted to non-null types, then MyList.toArray
+     * should not declare a return type of `@Nullable Object[]`.)
+     */
+    AnnotationMirror upperBoundOnArrayElementType =
+        upperBoundOnToArrayElementType(tree, method, receiverType);
+    if (upperBoundOnArrayElementType != null) {
+      ((AnnotatedArrayType) type)
+          .getComponentType()
+          .replaceAnnotation(upperBoundOnArrayElementType);
+    }
+
+    if (isGetCauseOnExecutionException(tree, method, receiverType)) {
+      /*
+       * ExecutionException.getCause() *can* in fact return null. In fact, the JDK even has
+       * methods that can produce such an exception:
+       * http://gee.cs.oswego.edu/cgi-bin/viewcvs.cgi/jsr166/src/main/java/util/concurrent/AbstractExecutorService.java?revision=1.54&view=markup#l185
+       *
+       * So the right way to annotate the method is indeed to mark is @Nullable. (Aside: When I
+       * first wrote this comment, a declaration of ExecutionException.getCause() in a stub file
+       * would have had no effect, since that override of Throwable.getCause() does not exist in
+       * the JDK. However, I'm now updating this comment to say that such declarations may have
+       * started working with version 3.11.0, thanks to
+       * https://github.com/typetools/checker-framework/pull/4275. But I haven't tested.)
+       *
+       * Still, in practice, the nullness errors we've reported when people dereference
+       * ExecutionException.getCause() have not been finding real issues. So, for the moment,
+       * we'll pretend that the value returned by that method is never null.
+       *
+       * TODO(cpovirk): Revisit this once we offer ways to suppress errors that are less noisy and
+       * more automated. Even before then, consider reducing the scope of this exception to apply
+       * only to exceptions thrown by Future.get, which, unlike those thrown by
+       * ExecutorService.invokeAny, do have a cause in all real-world implementations I'm aware
+       * of.
+       *
+       * TODO(cpovirk): Also, consider banning calls to ExecutionException constructors that pass
+       * a nullable argument or call an overload that does not require a cause.
+       */
+      type.replaceAnnotation(minusNull);
+    }
+
+    if (isGetCauseOnInvocationTargetException(method)) {
+      /*
+       * InvocationTargetException.getCause() is similar to ExecutionException.getCause(),
+       * discussed above. At least with InvocationTargetException, I am not aware of any JDK
+       * methods that produce an instance with a null cause.
+       *
+       * TODO(cpovirk): Still, consider being more conservative, as with ExecutionException.
+       */
+      type.replaceAnnotation(minusNull);
+    }
+
+    if (isGetEnumConstantsOnEnumClass(tree, method, receiverType)) {
+      /*
+       * This is not *completely* sound: getEnumConstants() on a Class<? extends Enum> can return
+       * null in at least two cases:
+       *
+       * - java.lang.Enum.class.getEnumConstants()
+       *
+       * - getClass().getEnumConstants() from within the body of an enum-value "subclass"
+       */
+      type.replaceAnnotation(minusNull);
+    }
+  }
+
+  private AnnotationMirror upperBoundOnToArrayElementType(
+      ExpressionTree tree, ExecutableElement method, AnnotatedTypeMirror receiverType) {
+    if (!util.isOrOverrides(method, util.collectionToArrayNoArgElement)) {
+      return null;
+    }
+
+    AnnotatedDeclaredType collectionType =
+        asSuper(
+            this,
+            applyCaptureConversion(receiverTypeOfUse(tree, receiverType)),
+            javaUtilCollection);
+    AnnotatedTypeMirror elementType = collectionType.getTypeArguments().get(0);
+    if (withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(elementType)) {
+      return minusNull;
+    } else if (withMostConvenientWorld().isNullExclusiveUnderEveryParameterization(elementType)) {
+      return nullnessOperatorUnspecified;
+    }
+    /*
+     * We could `return unionNull`, but there's no need because the type was already set to that
+     * from the declaration `@Nullable Object[] toArray` in the annotated JDK.
+     *
+     * (And there's no harm in forcing the caller to perform a null check: The caller already
+     * needs to make its call to getComponentType().replaceAnnotation(...) a conditional call
+     * because the caller doesn't know if the method invocation was a call to toArray() or not.)
+     *
+     * Conceivably, the compiler might even see the method invocation as a call to
+     * `MyList.toArray()`, where `MyList.toArray()` is an override that declares a more specific
+     * return type than the default `@Nullable Object[]`. Then it would be odd for us to overwrite
+     * that with a the more general type. To be fair, we would do that only in the case in which
+     * MyList was incorrectly annotated: If it were annotated correctly, then it would restrict
+     * its element type to non-null values, and thus we'd return minusNull here.
+     *
+     * OK, fine: Suppose that `MyList.toArray()` declares a return type of `Object[]` but leaves
+     * *unspecified* whether its element type includes null. (This would be an incorrect (or
+     * rather "incomplete") declaration but one that we would let through in "lenient mode.")
+     * Then, when someone calls that method, we would overwrite its declared return type with
+     * `@NullnessUnspecified Object[]`. That's technically wrong, and what we technically *should*
+     * do is probably:
+     *
+     * TODO(cpovirk): Have narrowReturnTypeOfSpecialCasedMethod set the array element type to the
+     * least upper bound of the type we return and the type it already has. And add sample inputs
+     * to test.
+     */
+    return null;
+  }
+
+  private boolean isGetCauseOnExecutionException(
+      ExpressionTree tree, ExecutableElement method, AnnotatedTypeMirror receiverType) {
+    // A static method named getCause has no receiver.
+    if (receiverType == null || !method.getSimpleName().contentEquals("getCause")) {
+      return false;
+    }
+    /*
+     * We can't use nameMatches(ExecutionException, getCause) because the ExecutableElement of the
+     * call is that of Throwable.getCause, not ExecutionException.getCause (an override that does
+     * not exist in the JDK).
+     *
+     * (But using TypeMirror is technically superior: It checks the whole class name, and it could
+     * be extended to look for subtypes. Ideally we'd also replace the method-name check with a
+     * full-on override check.)
+     */
+    return isAnyOf(
+        receiverTypeOfUse(tree, receiverType).getUnderlyingType(),
+        util.javaUtilConcurrentExecutionException,
+        /*
+         * TODO(cpovirk): For UncheckedExecutionException, rather than have a special case
+         * here, we can edit the class definition itself. That is, we edit it to override
+         * getCause() to declare the return type we want. And, to make that actually safe, we
+         * would likely also want to annotate its constructor to require a non-null exception
+         * parameter.
+         *
+         * However, there are at least two complications:
+         *
+         * 1. If we annotate the constructor parameter, that would also affect existing users
+         * of stock CF. In particular, it would make `new
+         * UncheckedExecutionException(executionException.getCause())` an error, since stock
+         * CF does not share our unsound assumption that executionException.getCause() returns
+         * non-null. We could reduce the fallout from this by introducing an internal stub for
+         * UncheckedExecutionException (which we would enable only for users of stock CF). For
+         * that matter, we could introduce an internal (unsound) stub for ExecutionException
+         * itself (though that may not be a complete solution, since users may be passing a
+         * nullable cause that they got from any number of places). Or we could always just
+         * suppress the new errors we create. *Or* we can change getCause) but unsoundly leave
+         * the constructor parameter as @Nullable.
+         *
+         * 2. UncheckedExecutionException has constructors that do not even accept a cause.
+         * Therefore, if we want to guarantee that its getCause() method never returns null,
+         * then we need to ban all use of those constructors (or at least use that isn't
+         * followed by a call to initCause()). Such a ban would likely be implemented as a
+         * checker-specific behavior. That argues for leaving UncheckedExecutionException
+         * annotated with nullable types and adding in the non-null behavior in our specific
+         * checker.
+         *
+         * This deserves more thought, especially given the potential impact on external
+         * users.
+         */
+        util.uncheckedExecutionException);
+  }
+
+  private boolean isAnyOf(TypeMirror actual, TypeMirror a, TypeMirror b) {
+    /*
+     * TODO(cpovirk): Eliminate null permissiveness by accepting a Collection<TypeMirror> and just
+     * not inserting types into it unless they're available on this compilation's classpath.
+     */
+    return (a != null && types.isSameType(actual, a)) || (b != null && types.isSameType(actual, b));
+  }
+
+  private boolean isGetCauseOnInvocationTargetException(ExecutableElement method) {
+    return nameMatches(method, "InvocationTargetException", "getCause")
+        || nameMatches(method, "InvocationTargetException", "getTargetException");
+  }
+
+  private boolean isGetEnumConstantsOnEnumClass(
+      ExpressionTree tree, ExecutableElement method, AnnotatedTypeMirror receiverType) {
+    if (util.classGetEnumConstantsElement.isEmpty()
+        || !Objects.equals(method, util.classGetEnumConstantsElement.get())) {
+      return false;
+    }
+    return types.isSubtype(
+        receiverTypeOfUse(tree, receiverType).getUnderlyingType(), util.javaLangClassOfExtendsEnum);
+  }
+
+  /**
+   * Returns whether {@code tree}, a method reference to {@code Map.getOrDefault} or an override,
+   * returns non-null because both the map's values and the default value are non-null. Invocations
+   * are handled by {@link NullSpecTreeAnnotator#isGetOrDefaultWithNonnullMapValuesAndDefault},
+   * which needs the type of the default-value argument.
+   */
+  private boolean isGetOrDefaultReferenceWithNonnullMapValuesAndDefault(
+      MemberReferenceTree tree, ExecutableElement method, AnnotatedTypeMirror receiverType) {
+    if (!util.isOrOverrides(method, util.mapGetOrDefaultElement)) {
+      return false;
+    }
+    List<AnnotatedTypeMirror> parameterTypes = getFunctionTypeFromTree(tree).getParameterTypes();
+    return isGetOrDefaultResultNonNull(
+        receiverTypeOfUse(tree, receiverType), parameterTypes.get(parameterTypes.size() - 1));
+  }
+
+  /**
+   * Returns the type of the receiver of the method that {@code tree} uses. That is {@code
+   * receiverType}, except for an unbound method reference such as {@code List::toArray}: Its
+   * receiver is the first parameter of its function type, since the type before the {@code ::} may
+   * be raw.
+   */
+  private AnnotatedTypeMirror receiverTypeOfUse(
+      ExpressionTree tree, AnnotatedTypeMirror receiverType) {
+    if (tree instanceof MemberReferenceTree
+        && MemberReferenceKind.getMemberReferenceKind((MemberReferenceTree) tree).isUnbound()) {
+      return getFunctionTypeFromTree((MemberReferenceTree) tree).getParameterTypes().get(0);
+    }
+    return receiverType;
+  }
+
+  /**
+   * Returns whether {@code getOrDefault} on a map of type {@code mapType} with a default value of
+   * type {@code defaultType} returns non-null.
+   */
+  private boolean isGetOrDefaultResultNonNull(
+      AnnotatedTypeMirror mapType, AnnotatedTypeMirror defaultType) {
+    AnnotatedDeclaredType mapSupertype = asSuper(this, mapType, javaUtilMap);
+    AnnotatedTypeMirror valueType =
+        ((AnnotatedDeclaredType) applyCaptureConversion(mapSupertype)).getTypeArguments().get(1);
+    return withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(valueType)
+        && withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(defaultType);
+    /*
+     * TODO(cpovirk): Also handle the case in which at least one has unspecified nullness, similar
+     * to what we do in upperBoundOnToArrayElementType.
+     */
   }
 
   /**
@@ -1320,6 +1637,19 @@ final class NullSpecAnnotatedTypeFactory
     return new NullSpecTransfer(analysis, util);
   }
 
+  /**
+   * Makes the result of a class instance creation non-null. For an anonymous class, CF takes the
+   * least upper bound of the anonymous class's type, as a use, and the result of the superclass
+   * constructor, and in null-unmarked code that use is unspecified.
+   */
+  @Override
+  protected ParameterizedExecutableType constructorFromUse(
+      NewClassTree tree, boolean inferTypeArgs) {
+    ParameterizedExecutableType result = super.constructorFromUse(tree, inferTypeArgs);
+    result.executableType.getReturnType().replaceAnnotation(minusNull);
+    return result;
+  }
+
   @Override
   public AnnotatedDeclaredType getSelfType(Tree tree) {
     AnnotatedDeclaredType superResult = super.getSelfType(tree);
@@ -1478,110 +1808,22 @@ final class NullSpecAnnotatedTypeFactory
       return super.visitBinary(tree, type);
     }
 
+    /**
+     * Makes the result of an array creation non-null. Otherwise, it would get the default for a use
+     * of the array type, which in null-unmarked code is unspecified.
+     */
+    @Override
+    public Void visitNewArray(NewArrayTree tree, AnnotatedTypeMirror type) {
+      type.replaceAnnotation(minusNull);
+      return super.visitNewArray(tree, type);
+    }
+
     @Override
     public Void visitMethodInvocation(MethodInvocationTree tree, AnnotatedTypeMirror type) {
-      ExecutableElement method = elementFromUse(tree);
-
       if (establishesStreamElementsAreNonNull(tree)) {
         AnnotatedTypeMirror returnedStreamElementType =
             ((AnnotatedDeclaredType) type).getTypeArguments().get(0);
         returnedStreamElementType.replaceAnnotation(minusNull);
-      }
-
-      /*
-       * Unsoundly assume that copyOf and copyOfRange return an array of non-null elements. This is
-       * doubly unsound:
-       *
-       * - Both methods permit creating a larger array than the original -- and padding the result
-       * with nulls. That said, this is no worse a problem than we have with array initialization in
-       * general: We already allow users to write `Object[] o = new Object[10];`, and that has the
-       * same problem. Not to mention that we further treat arrays as covariant, so it's always
-       * possible to "break" an `Object[]` by assigning it to a `@Nullable Object[]` and writing
-       * null into it.
-       *
-       * - Even if the *input* array *already* has an element type that includes null, we *still*
-       * claim that the output array's element type does not. This could probably be fixed
-       * relatively easily, but: First, I'm always at least a little nervous about calling
-       * getAnnotatedType (or even the more lightweight fromExpression), both because I worry
-       * specifically that it might call back into this method (infinite recursion?) and generally
-       * that it might be expensive. Second, I imagine that a call to copyOf or copyOfRange is often
-       * used to "trim" uninitialized elements from the end of an array. Thus, we'd like to make
-       * the use of those methods a pleasant experience so as to encourage users to be "honest"
-       * about having a `@Nullable Object[]` at the beginning, which they convert to an `Object[]`
-       * only later.
-       *
-       * Still, we may want to revisit all this.
-       */
-      if (nameMatches(method, "Arrays", "copyOf") || nameMatches(method, "Arrays", "copyOfRange")) {
-        ((AnnotatedArrayType) type).getComponentType().replaceAnnotation(minusNull);
-      }
-
-      /*
-       * If this is a call to `Collection.toArray()`, then try to produce a more specific return
-       * type than `@Nullable Object[]`.
-       *
-       * *Ideally* we would do this not just for method invocations but also for method references
-       * and even other lookups of methods, like checking whether MyList.toArray is a valid override
-       * of Collection.toArray. (That is, if MyList is restricted to non-null types, then
-       * MyList.toArray should not declare a return type of `@Nullable Object[]`.)
-       */
-      AnnotationMirror upperBoundOnArrayElementType = upperBoundOnToArrayElementType(tree);
-      if (upperBoundOnArrayElementType != null) {
-        ((AnnotatedArrayType) type)
-            .getComponentType()
-            .replaceAnnotation(upperBoundOnArrayElementType);
-      }
-
-      if (isGetCauseOnExecutionException(tree)) {
-        /*
-         * ExecutionException.getCause() *can* in fact return null. In fact, the JDK even has
-         * methods that can produce such an exception:
-         * http://gee.cs.oswego.edu/cgi-bin/viewcvs.cgi/jsr166/src/main/java/util/concurrent/AbstractExecutorService.java?revision=1.54&view=markup#l185
-         *
-         * So the right way to annotate the method is indeed to mark is @Nullable. (Aside: When I
-         * first wrote this comment, a declaration of ExecutionException.getCause() in a stub file
-         * would have had no effect, since that override of Throwable.getCause() does not exist in
-         * the JDK. However, I'm now updating this comment to say that such declarations may have
-         * started working with version 3.11.0, thanks to
-         * https://github.com/typetools/checker-framework/pull/4275. But I haven't tested.)
-         *
-         * Still, in practice, the nullness errors we've reported when people dereference
-         * ExecutionException.getCause() have not been finding real issues. So, for the moment,
-         * we'll pretend that the value returned by that method is never null.
-         *
-         * TODO(cpovirk): Revisit this once we offer ways to suppress errors that are less noisy and
-         * more automated. Even before then, consider reducing the scope of this exception to apply
-         * only to exceptions thrown by Future.get, which, unlike those thrown by
-         * ExecutorService.invokeAny, do have a cause in all real-world implementations I'm aware
-         * of.
-         *
-         * TODO(cpovirk): Also, consider banning calls to ExecutionException constructors that pass
-         * a nullable argument or call an overload that does not require a cause.
-         */
-        type.replaceAnnotation(minusNull);
-      }
-
-      if (isGetCauseOnInvocationTargetException(tree)) {
-        /*
-         * InvocationTargetException.getCause() is similar to ExecutionException.getCause(),
-         * discussed above. At least with InvocationTargetException, I am not aware of any JDK
-         * methods that produce an instance with a null cause.
-         *
-         * TODO(cpovirk): Still, consider being more conservative, as with ExecutionException.
-         */
-        type.replaceAnnotation(minusNull);
-      }
-
-      if (isGetEnumConstantsOnEnumClass(tree)) {
-        /*
-         * This is not *completely* sound: getEnumConstants() on a Class<? extends Enum> can return
-         * null in at least two cases:
-         *
-         * - java.lang.Enum.class.getEnumConstants()
-         *
-         * - getClass().getEnumConstants() from within the body of an enum-value "subclass"
-         */
-        type.replaceAnnotation(minusNull);
       }
 
       if (isGetOrDefaultWithNonnullMapValuesAndDefault(tree)) {
@@ -1599,206 +1841,29 @@ final class NullSpecAnnotatedTypeFactory
         /*
          * We don't care much about handling IDENTIFIER, since we're not likely to be analyzing a
          * Map implementation with a call to getOrDefault on itself, at least not with a
-         * defaultValue that is known to be non-null. But see the TODO in
-         * upperBoundOnToArrayElementType.
+         * defaultValue that is known to be non-null.
          */
         return false;
       }
-      MemberSelectTree methodSelect = (MemberSelectTree) tree.getMethodSelect();
-      ExpressionTree receiver = methodSelect.getExpression();
-      AnnotatedDeclaredType mapType =
-          asSuper(
-              NullSpecAnnotatedTypeFactory.this,
-              /*
-               * For hand-wringing about this call to getAnnotatedType, see
-               * upperBoundOnToArrayElementType.
-               */
-              getAnnotatedType(receiver),
-              javaUtilMap);
-      AnnotatedTypeMirror valueType =
-          ((AnnotatedDeclaredType) applyCaptureConversion(mapType)).getTypeArguments().get(1);
-      AnnotatedTypeMirror defaultType = getAnnotatedType(tree.getArguments().get(1));
-      return withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(valueType)
-          && withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(defaultType);
-      /*
-       * TODO(cpovirk): Also handle the case in which at least one has unspecified nullness, similar
-       * to what we do in upperBoundOnToArrayElementType.
-       */
-    }
-
-    private boolean isGetEnumConstantsOnEnumClass(MethodInvocationTree tree) {
-      if (util.classGetEnumConstantsElement.isEmpty()
-          || !Objects.equals(elementFromUse(tree), util.classGetEnumConstantsElement.get())) {
-        return false;
-      }
-      if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
-        /*
-         * We don't care much about handling IDENTIFIER, since we're not likely to be analyzing
-         * Class itself. But see the TODO in upperBoundOnToArrayElementType.
-         */
-        return false;
-      }
-      MemberSelectTree methodSelect = (MemberSelectTree) tree.getMethodSelect();
-      TypeMirror receiverType = typeOf(methodSelect.getExpression());
-      return types.isSubtype(receiverType, util.javaLangClassOfExtendsEnum);
-    }
-
-    private boolean isGetCauseOnExecutionException(MethodInvocationTree tree) {
-      if (!(tree.getMethodSelect() instanceof MemberSelectTree)) {
-        /*
-         * We don't care much about handling IDENTIFIER, since we're not likely to be analyzing
-         * ExecutionException itself (nor a subclass of it). But see the TODO in
-         * upperBoundOnToArrayElementType.
-         */
-        return false;
-      }
-      MemberSelectTree methodSelect = (MemberSelectTree) tree.getMethodSelect();
-
-      /*
-       * We can't use nameMatches(ExecutionException, getCause) because the ExecutableElement of the
-       * call is that of Throwable.getCause, not ExecutionException.getCause (an override that does
-       * not exist in the JDK).
-       *
-       * (But using TypeMirror is technically superior: It checks the whole class name, and it could
-       * be extended to look for subtypes. Ideally we'd also replace the method-name check with a
-       * full-on override check.)
-       */
-      return isAnyOf(
-              typeOf(methodSelect.getExpression()),
-              util.javaUtilConcurrentExecutionException,
-              /*
-               * TODO(cpovirk): For UncheckedExecutionException, rather than have a special case
-               * here, we can edit the class definition itself. That is, we edit it to override
-               * getCause() to declare the return type we want. And, to make that actually safe, we
-               * would likely also want to annotate its constructor to require a non-null exception
-               * parameter.
-               *
-               * However, there are at least two complications:
-               *
-               * 1. If we annotate the constructor parameter, that would also affect existing users
-               * of stock CF. In particular, it would make `new
-               * UncheckedExecutionException(executionException.getCause())` an error, since stock
-               * CF does not share our unsound assumption that executionException.getCause() returns
-               * non-null. We could reduce the fallout from this by introducing an internal stub for
-               * UncheckedExecutionException (which we would enable only for users of stock CF). For
-               * that matter, we could introduce an internal (unsound) stub for ExecutionException
-               * itself (though that may not be a complete solution, since users may be passing a
-               * nullable cause that they got from any number of places). Or we could always just
-               * suppress the new errors we create. *Or* we can change getCause) but unsoundly leave
-               * the constructor parameter as @Nullable.
-               *
-               * 2. UncheckedExecutionException has constructors that do not even accept a cause.
-               * Therefore, if we want to guarantee that its getCause() method never returns null,
-               * then we need to ban all use of those constructors (or at least use that isn't
-               * followed by a call to initCause()). Such a ban would likely be implemented as a
-               * checker-specific behavior. That argues for leaving UncheckedExecutionException
-               * annotated with nullable types and adding in the non-null behavior in our specific
-               * checker.
-               *
-               * This deserves more thought, especially given the potential impact on external
-               * users.
-               */
-              util.uncheckedExecutionException)
-          && methodSelect.getIdentifier().contentEquals("getCause");
-    }
-
-    private boolean isAnyOf(TypeMirror actual, TypeMirror a, TypeMirror b) {
-      /*
-       * TODO(cpovirk): Eliminate null permissiveness by accepting a Collection<TypeMirror> and just
-       * not inserting types into it unless they're available on this compilation's classpath.
-       */
-      return (a != null && types.isSameType(actual, a))
-          || (b != null && types.isSameType(actual, b));
-    }
-
-    private boolean isGetCauseOnInvocationTargetException(MethodInvocationTree tree) {
-      ExecutableElement method = elementFromUse(tree);
-      return nameMatches(method, "InvocationTargetException", "getCause")
-          || nameMatches(method, "InvocationTargetException", "getTargetException");
-    }
-
-    private AnnotationMirror upperBoundOnToArrayElementType(MethodInvocationTree tree) {
-      ExecutableElement method = elementFromUse(tree);
-      if (!util.isOrOverrides(method, util.collectionToArrayNoArgElement)) {
-        return null;
-      }
-
-      /*
-       * TODO(cpovirk): Consider using this code in other methods above (which currently handle only
-       * MEMBER_SELECT). And consider changing *this* code to use
-       * AnnotatedTypeFactory.getReceiverType, since we need a full-on AnnotatedTypeMirror here. No,
-       * getReceiverType doesn't eliminate the getAnnotatedType call that I worry about below. But
-       * it could save us some code and probably handle more cases than we do. Arguably that extra
-       * handling is enough reason to use getReceiverType even when we could get by with a plain
-       * TypeMirror, as in isGetCauseOnExecutionException.
-       */
-      Tree receiver;
-      if (tree.getMethodSelect() instanceof MemberSelectTree) {
-        receiver = ((MemberSelectTree) tree.getMethodSelect()).getExpression();
-      } else if (tree.getMethodSelect() instanceof IdentifierTree) {
-        /*
-         * TODO(cpovirk): We need to figure out whether the call is being made on the instance of
-         * the enclosing class or on another class that encloses that.
-         */
-        receiver = enclosingClass(getPath(tree));
-      } else {
-        // TODO(cpovirk): Can this happen? Maybe throw an exception?
-        return null;
-      }
-
-      AnnotatedDeclaredType collectionType =
-          asSuper(
-              NullSpecAnnotatedTypeFactory.this,
-              /*
-               * As discussed in visitMethodInvocation, I am nervous about calling getAnnotatedType
-               * from here. (But for what it's worth, a quick test on com.google.common.primitives
-               * suggests no performance impact.)
-               *
-               * If we run into problems, we could explore simpler alternatives. In
-               * particular, if the problem is dataflow, we could consider creating a second
-               * instance of NullSpecAnnotatedTypeFactory that passes useFlow=false, and then we
-               * could use that here. That should be safe: We don't need dataflow because we care
-               * only about the _type argument_.
-               *
-               * (OK, now I'm imagining a scenario in which the Checker Framework infers the type
-               * argument to `new MyList<>(delegate) { ... }` based on dataflow analysis of the
-               * `delegate` variable :) But I don't even know if it would take dataflow into account
-               * there. And if does, I could live with not handling that edge case :))
-               */
-              applyCaptureConversion(getAnnotatedType(receiver)),
-              javaUtilCollection);
-      AnnotatedTypeMirror elementType = collectionType.getTypeArguments().get(0);
-      if (withLeastConvenientWorld().isNullExclusiveUnderEveryParameterization(elementType)) {
-        return minusNull;
-      } else if (withMostConvenientWorld().isNullExclusiveUnderEveryParameterization(elementType)) {
-        return nullnessOperatorUnspecified;
-      }
-      /*
-       * We could `return unionNull`, but there's no need because the type was already set to that
-       * from the declaration `@Nullable Object[] toArray` in the annotated JDK.
-       *
-       * (And there's no harm in forcing the caller to perform a null check: The caller already
-       * needs to make its call to getComponentType().replaceAnnotation(...) a conditional call
-       * because the caller doesn't know if the method invocation was a call to toArray() or not.)
-       *
-       * Conceivably, the compiler might even see the method invocation as a call to
-       * `MyList.toArray()`, where `MyList.toArray()` is an override that declares a more specific
-       * return type than the default `@Nullable Object[]`. Then it would be odd for us to overwrite
-       * that with a the more general type. To be fair, we would do that only in the case in which
-       * MyList was incorrectly annotated: If it were annotated correctly, then it would restrict
-       * its element type to non-null values, and thus we'd return minusNull here.
-       *
-       * OK, fine: Suppose that `MyList.toArray()` declares a return type of `Object[]` but leaves
-       * *unspecified* whether its element type includes null. (This would be an incorrect (or
-       * rather "incomplete") declaration but one that we would let through in "lenient mode.")
-       * Then, when someone calls that method, we would overwrite its declared return type with
-       * `@NullnessUnspecified Object[]`. That's technically wrong, and what we technically *should*
-       * do is probably:
-       *
-       * TODO(cpovirk): Have visitMethodInvocation set the array element type to the least upper
-       * bound of the type we return and the type it already has. And add sample inputs to test.
-       */
-      return null;
+      ExpressionTree receiver = ((MemberSelectTree) tree.getMethodSelect()).getExpression();
+      return isGetOrDefaultResultNonNull(
+          /*
+           * As discussed in narrowReturnTypeOfSpecialCasedMethod, I am nervous about calling
+           * getAnnotatedType from here. (But for what it's worth, a quick test on
+           * com.google.common.primitives suggests no performance impact.)
+           *
+           * If we run into problems, we could explore simpler alternatives. In particular, if the
+           * problem is dataflow, we could consider creating a second instance of
+           * NullSpecAnnotatedTypeFactory that passes useFlow=false, and then we could use that
+           * here. That should be safe: We don't need dataflow because we care only about the _type
+           * argument_.
+           *
+           * (OK, now I'm imagining a scenario in which the Checker Framework infers the type
+           * argument to `new MyList<>(delegate) { ... }` based on dataflow analysis of the
+           * `delegate` variable :) But I don't even know if it would take dataflow into account
+           * there. And if does, I could live with not handling that edge case :))
+           */
+          getAnnotatedType(receiver), getAnnotatedType(tree.getArguments().get(1)));
     }
 
     private boolean establishesStreamElementsAreNonNull(MethodInvocationTree invocation) {
