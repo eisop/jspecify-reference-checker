@@ -49,6 +49,8 @@ import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.NewArrayTree;
+import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import java.lang.annotation.Annotation;
@@ -1634,6 +1636,19 @@ final class NullSpecAnnotatedTypeFactory
     return new NullSpecTransfer(analysis, util);
   }
 
+  /**
+   * Makes the result of a class instance creation non-null. For an anonymous class, CF takes the
+   * least upper bound of the anonymous class's type, as a use, and the result of the superclass
+   * constructor, and in null-unmarked code that use is unspecified.
+   */
+  @Override
+  protected ParameterizedExecutableType constructorFromUse(
+      NewClassTree tree, boolean inferTypeArgs) {
+    ParameterizedExecutableType result = super.constructorFromUse(tree, inferTypeArgs);
+    result.executableType.getReturnType().replaceAnnotation(minusNull);
+    return result;
+  }
+
   @Override
   public AnnotatedDeclaredType getSelfType(Tree tree) {
     AnnotatedDeclaredType superResult = super.getSelfType(tree);
@@ -1790,6 +1805,16 @@ final class NullSpecAnnotatedTypeFactory
     public Void visitBinary(BinaryTree tree, AnnotatedTypeMirror type) {
       type.addAnnotation(minusNull);
       return super.visitBinary(tree, type);
+    }
+
+    /**
+     * Makes the result of an array creation non-null. Otherwise, it would get the default for a use
+     * of the array type, which in null-unmarked code is unspecified.
+     */
+    @Override
+    public Void visitNewArray(NewArrayTree tree, AnnotatedTypeMirror type) {
+      type.replaceAnnotation(minusNull);
+      return super.visitNewArray(tree, type);
     }
 
     @Override
