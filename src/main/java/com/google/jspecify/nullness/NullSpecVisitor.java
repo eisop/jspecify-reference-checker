@@ -39,28 +39,36 @@ import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.AssertTree;
 import com.sun.source.tree.AssignmentTree;
+import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ConditionalExpressionTree;
+import com.sun.source.tree.DoWhileLoopTree;
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.PrimitiveTypeTree;
+import com.sun.source.tree.SwitchTree;
 import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
 import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.TypeParameterTree;
+import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
+import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.util.TreeScanner;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -86,6 +94,8 @@ import org.checkerframework.framework.util.typeinference8.InferenceResult;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
+import org.checkerframework.javacutil.TreeUtilsAfterJava11.SwitchExpressionUtils;
+import org.checkerframework.javacutil.TypesUtils;
 
 final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory> {
   private final boolean checkImpl;
@@ -388,6 +398,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   @Override
   public Void visitArrayAccess(ArrayAccessTree tree, Void p) {
     ensureNonNull(tree.getExpression());
+    ensureNonNull(tree.getIndex());
     return super.visitArrayAccess(tree, p);
   }
 
@@ -438,7 +449,97 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitTypeCast(tree, p);
   }
 
-  // TODO: binary, unary, compoundassign, ...
+  /*
+   * Unboxing a null reference throws NPE (JLS 5.1.8), so the operands that these constructs unbox
+   * must be null-exclusive. ensureNonNull ignores an operand of primitive type.
+   */
+
+  @Override
+  public Void visitBinary(BinaryTree tree, Void p) {
+    if (isUnboxingOperation(tree)) {
+      ensureNonNull(tree.getLeftOperand());
+      ensureNonNull(tree.getRightOperand());
+    }
+    return super.visitBinary(tree, p);
+  }
+
+  /**
+   * Returns whether {@code tree} unboxes its operands. A string concatenation does not, nor does
+   * {@code ==} or {@code !=} on two references.
+   */
+  private boolean isUnboxingOperation(BinaryTree tree) {
+    if (tree.getKind() == Kind.EQUAL_TO || tree.getKind() == Kind.NOT_EQUAL_TO) {
+      return isPrimitive(typeOf(tree.getLeftOperand()))
+          != isPrimitive(typeOf(tree.getRightOperand()));
+    }
+    return !TypesUtils.isString(typeOf(tree));
+  }
+
+  @Override
+  public Void visitUnary(UnaryTree tree, Void p) {
+    ensureNonNull(tree.getExpression());
+    return super.visitUnary(tree, p);
+  }
+
+  @Override
+  public Void visitCompoundAssignment(CompoundAssignmentTree tree, Void p) {
+    if (!TypesUtils.isString(typeOf(tree.getVariable()))) {
+      ensureNonNull(tree.getVariable());
+      ensureNonNull(tree.getExpression());
+    }
+    return super.visitCompoundAssignment(tree, p);
+  }
+
+  @Override
+  public Void visitConditionalExpression(ConditionalExpressionTree tree, Void p) {
+    ensureNonNull(tree.getCondition());
+    return super.visitConditionalExpression(tree, p);
+  }
+
+  @Override
+  public Void visitWhileLoop(WhileLoopTree tree, Void p) {
+    ensureNonNull(tree.getCondition());
+    return super.visitWhileLoop(tree, p);
+  }
+
+  @Override
+  public Void visitDoWhileLoop(DoWhileLoopTree tree, Void p) {
+    ensureNonNull(tree.getCondition());
+    return super.visitDoWhileLoop(tree, p);
+  }
+
+  @Override
+  public Void visitForLoop(ForLoopTree tree, Void p) {
+    if (tree.getCondition() != null) {
+      ensureNonNull(tree.getCondition());
+    }
+    return super.visitForLoop(tree, p);
+  }
+
+  @Override
+  public Void visitNewArray(NewArrayTree tree, Void p) {
+    for (ExpressionTree dimension : tree.getDimensions()) {
+      ensureNonNull(dimension);
+    }
+    return super.visitNewArray(tree, p);
+  }
+
+  /** A switch on a null reference throws NPE, unless it has a {@code case null}. */
+  @Override
+  public Void visitSwitch(SwitchTree tree, Void p) {
+    if (!TreeUtils.hasNullCaseLabel(tree)) {
+      ensureNonNull(tree.getExpression());
+    }
+    return super.visitSwitch(tree, p);
+  }
+
+  @Override
+  public void visitSwitchExpression17(Tree switchExpressionTree) {
+    if (!TreeUtils.hasNullCaseLabel(switchExpressionTree)) {
+      ensureNonNull(SwitchExpressionUtils.getExpression(switchExpressionTree));
+    }
+    super.visitSwitchExpression17(switchExpressionTree);
+  }
 
   @Override
   public Void visitMethodInvocation(MethodInvocationTree tree, Void p) {
