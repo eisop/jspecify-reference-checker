@@ -518,10 +518,26 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitNewArray(NewArrayTree tree, Void p) {
+    // An array creation is always non-null.
+    checkNoNullnessAnnotations(tree, annotationsOnCreatedArray(tree), "new.array.annotated");
     for (ExpressionTree dimension : tree.getDimensions()) {
       ensureNonNull(dimension);
     }
     return super.visitNewArray(tree, p);
+  }
+
+  /**
+   * Returns the annotations written on the array that {@code tree} creates, as opposed to its
+   * component type: those on the first dimension, as in {@code new String @Nullable [n]}, or, in an
+   * array creation with an initializer, those on the first brackets, as in {@code new
+   * String @Nullable [] {}}.
+   */
+  private static List<? extends AnnotationTree> annotationsOnCreatedArray(NewArrayTree tree) {
+    if (tree.getDimensions().isEmpty()) {
+      return tree.getAnnotations();
+    }
+    List<? extends List<? extends AnnotationTree>> dimAnnotations = tree.getDimAnnotations();
+    return dimAnnotations.isEmpty() ? List.of() : dimAnnotations.get(0);
   }
 
   /** A switch on a null reference throws NPE, unless it has a {@code case null}. */
@@ -551,6 +567,13 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitNewClass(NewClassTree tree, Void p) {
+    /*
+     * An object creation is always non-null. For an anonymous class, javac also copies the
+     * annotation to the anonymous class's supertype, but CF does not check the supertypes of an
+     * anonymous class, so the annotation is reported only here.
+     */
+    checkNoNullnessAnnotationsOnType(tree, tree.getIdentifier(), "new.object.annotated");
+
     ExecutableElement constructor = elementFromUse(tree);
 
     checkForAtomicReferenceConstructorCall(tree, constructor);
@@ -784,32 +807,19 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     checkNoNullnessAnnotations(
         tree, tree.getModifiers().getAnnotations(), "type.declaration.annotated");
 
-    /*
-     * A supertype reference in an extends or implements clause is always non-null -- you can't
-     * extend or implement a possibly-null type. Nothing else visits these: they're not a
-     * variable's or method's type, so visitVariable/processMethodTree never see them, and their
-     * Kind is as ordinary as any other type-use (e.g. IDENTIFIER), so visitAnnotatedType's
-     * wildcard/primitive-specific branches don't either.
-     */
-    checkSupertypeClauseNotAnnotated(tree.getExtendsClause());
-    for (Tree implementsClause : tree.getImplementsClause()) {
-      checkSupertypeClauseNotAnnotated(implementsClause);
-    }
-
     checkUninitializedFields(tree);
 
     super.processClassTree(tree);
   }
 
   /**
-   * Reports {@code supertype.annotated} if {@code clause} (an {@code extends} or {@code implements}
-   * clause, or {@code null} if the class has no {@code extends} clause) carries a nullness
-   * annotation.
+   * Reports {@code supertype.annotated} for each nullness annotation on the supertype in an {@code
+   * extends} or {@code implements} clause: you can't extend or implement a possibly-null type, so a
+   * supertype is always non-null.
    */
-  private void checkSupertypeClauseNotAnnotated(@Nullable Tree clause) {
-    if (clause != null) {
-      checkNoNullnessAnnotationsOnType(clause, clause, "supertype.annotated");
-    }
+  @Override
+  protected void checkAnnotationOnSupertype(Tree boundClause) {
+    checkNoNullnessAnnotationsOnType(boundClause, boundClause, "supertype.annotated");
   }
 
   /**
