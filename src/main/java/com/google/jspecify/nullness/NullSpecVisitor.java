@@ -61,7 +61,6 @@ import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
 import com.sun.source.util.TreeScanner;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -443,6 +442,9 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
    * <p>Unlike the superclass, this does not compare the receiver to the method's declared receiver
    * type (see {@link #skipReceiverSubtypeCheck}) and does not check the arguments: a boxing
    * conversion's {@code valueOf} argument is a primitive.
+   *
+   * <p>Without {@code -AcheckImpl}, the type factory runs no dataflow analysis, so the CFG is not
+   * built and this method is not called.
    */
   @Override
   protected void checkSyntheticMethodInvocation(
@@ -459,20 +461,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     if (node.getTarget().getMethod().getSimpleName().contentEquals("close")) {
       return;
     }
-    // Without -AcheckImpl, code in a block is not checked; see visitBlock.
-    if (!checkImpl && isInBlock(receiver.getTree())) {
-      return;
-    }
     ensureNonNull(receiver.getTree());
-  }
-
-  private boolean isInBlock(Tree tree) {
-    for (TreePath path = atypeFactory.getPath(tree); path != null; path = path.getParentPath()) {
-      if (path.getLeaf() instanceof BlockTree) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /**
@@ -480,7 +469,8 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
    * the CFG desugars it to a call of {@code intValue()}, which {@link
    * #checkSyntheticMethodInvocation} reports as a dereference, like every other unboxing. The
    * Nullness Checker's {@code commonAssignmentCheck} likewise replaces the assignment error by its
-   * unboxing error.
+   * unboxing error. Without {@code -AcheckImpl}, the synthetic invocations are not checked, so the
+   * assignment check is kept.
    */
   @Override
   protected boolean commonAssignmentCheck(
@@ -489,7 +479,9 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       Tree valueTree,
       String errorKey,
       Object... extraArgs) {
-    if (isPrimitive(varType.getUnderlyingType()) && !isPrimitive(valueType.getUnderlyingType())) {
+    if (checkImpl
+        && isPrimitive(varType.getUnderlyingType())
+        && !isPrimitive(valueType.getUnderlyingType())) {
       return true;
     }
     return super.commonAssignmentCheck(varType, valueType, valueTree, errorKey, extraArgs);
