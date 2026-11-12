@@ -435,13 +435,6 @@ final class NullSpecAnnotatedTypeFactory
   @Override
   protected void addUncheckedStandardDefaults(QualifierDefaults defs) {
     // TODO: figure out whether we need different defaults here
-    /*
-    defs.addUncheckedCodeDefaults(minusNull, defaultLocationsMinusNull);
-    defs.addUncheckedCodeDefaults(unionNull, defaultLocationsUnionNull);
-    defs.addUncheckedCodeDefaults(nullnessOperatorUnspecified, defaultLocationsUnspecified);
-    */
-    // defs.addUncheckedCodeDefaults(nullnessOperatorUnspecified, new TypeUseLocation[] {
-    // TypeUseLocation.ALL });
   }
 
   @Override
