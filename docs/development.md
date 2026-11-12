@@ -5,13 +5,16 @@
 This project depends on the [EISOP Checker Framework][EISOP].
 
 To codevelop changes with the EISOP Checker Framework, clone it into the
-sibling directory `../checker-framwork` and pass
+sibling directory `../checker-framework` and pass
 `--include-build path/to/checker-framework` to Gradle when building
 this project.
 
-_That_ build then clones some other projects into other sibling directories. It
-expects `../jdk` to contain an annotated JDK, so our build
-clones [JSpecify's][jspecify-jdk] there.
+This project's build expects [JSpecify's annotated JDK][jspecify-jdk] in
+`../jdk`, but the Checker Framework's build expects its own annotated JDK
+there. Either pass `-PskipAnnotatedJdk` so that the Checker Framework is
+built without one, as this project's CI does, or clone JSpecify's JDK
+elsewhere and pass `-PjspecifyJdkHome=path/to/jdk`, as the Checker
+Framework's `checker/bin-devel/test-jspecify-reference-checker.sh` does.
 
 ## Codevelopment with JSpecify
 
@@ -42,4 +45,3 @@ Gradle properties on the command line.
 [EISOP]: https://github.com/eisop/checker-framework
 [jspecify-jdk]: https://github.com/jspecify/jdk
 [jspecify-jspecify]: https://github.com/jspecify/jspecify
-[main-eisop branch]: https://github.com/jspecify/jspecify-reference-checker/tree/main-eisop
