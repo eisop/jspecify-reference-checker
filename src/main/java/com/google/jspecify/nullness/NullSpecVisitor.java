@@ -39,17 +39,12 @@ import com.sun.source.tree.ArrayAccessTree;
 import com.sun.source.tree.ArrayTypeTree;
 import com.sun.source.tree.AssertTree;
 import com.sun.source.tree.AssignmentTree;
-import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.BlockTree;
 import com.sun.source.tree.ClassTree;
-import com.sun.source.tree.CompoundAssignmentTree;
 import com.sun.source.tree.ConditionalExpressionTree;
-import com.sun.source.tree.DoWhileLoopTree;
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
-import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.IfTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -64,11 +59,8 @@ import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
-import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.TypeParameterTree;
-import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.tree.WhileLoopTree;
 import com.sun.source.util.TreeScanner;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -80,10 +72,13 @@ import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.util.Elements;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.common.basetype.TypeValidator;
+import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
+import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
@@ -389,16 +384,22 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitMemberSelect(tree, p);
   }
 
+  /**
+   * Requires a nullable array that an enhanced for loop iterates over to be null-exclusive. For an
+   * {@code Iterable}, the CFG synthesizes the {@code iterator()} call, which {@link
+   * #checkSyntheticMethodInvocation} checks.
+   */
   @Override
   public Void visitEnhancedForLoop(EnhancedForLoopTree tree, Void p) {
-    ensureNonNull(tree.getExpression());
+    if (typeOf(tree.getExpression()).getKind() == TypeKind.ARRAY) {
+      ensureNonNull(tree.getExpression());
+    }
     return super.visitEnhancedForLoop(tree, p);
   }
 
   @Override
   public Void visitArrayAccess(ArrayAccessTree tree, Void p) {
     ensureNonNull(tree.getExpression());
-    ensureNonNull(tree.getIndex());
     return super.visitArrayAccess(tree, p);
   }
 
@@ -421,108 +422,75 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitAssert(AssertTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
     if (tree.getDetail() != null) {
       ensureNonNull(tree.getDetail());
     }
     return super.visitAssert(tree, p);
   }
 
-  @Override
-  public Void visitIf(IfTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
-    return super.visitIf(tree, p);
-  }
-
-  @Override
-  public Void visitTypeCast(TypeCastTree tree, Void p) {
-    /*
-     * Casting a reference to a primitive type applies unboxing (JLS 5.1.8), throwing NPE if the
-     * reference is null. CF's visitTypeCast only issues a `cast.unsafe` warning, which does not
-     * report the expected nullness error. Require the operand to be null-exclusive (via
-     * ensureNonNull) when casting to a primitive. Checking `typeOf(tree.getType())` handles
-     * primitive types wrapped in AnnotatedTypeTree (e.g. `(@Nullable int) obj`).
-     */
-    if (isPrimitive(typeOf(tree.getType()))) {
-      ensureNonNull(tree.getExpression());
-    }
-    return super.visitTypeCast(tree, p);
-  }
-
-  /*
-   * Unboxing a null reference throws NPE (JLS 5.1.8), so the operands that these constructs unbox
-   * must be null-exclusive. ensureNonNull ignores an operand of primitive type.
+  /**
+   * Requires the receiver of a method invocation that the CFG synthesized for a conversion to be
+   * null-exclusive, reporting {@code dereference} as {@link #visitMemberSelect} does for an
+   * explicit call. Unboxing a null reference throws NPE (JLS 5.1.8): the CFG desugars every
+   * unboxing conversion (an operand of an operator, a condition, an array index or dimension, a
+   * cast to a primitive, a switch selector, a compound assignment) to a call of {@code intValue()}
+   * and the like, an enhanced for loop over an {@code Iterable} to a call of {@code iterator()},
+   * and a try-with-resources to a call of {@code close()}. Checking the synthesized call covers all
+   * of these at once; {@code BaseTypeVisitor.visitMethodInvocation} never sees them, since they are
+   * not part of the AST.
+   *
+   * <p>Unlike the superclass, this does not compare the receiver to the method's declared receiver
+   * type (see {@link #skipReceiverSubtypeCheck}) and does not check the arguments: a boxing
+   * conversion's {@code valueOf} argument is a primitive.
+   *
+   * <p>Without {@code -AcheckImpl}, the type factory runs no dataflow analysis, so the CFG is not
+   * built and this method is not called.
    */
-
   @Override
-  public Void visitBinary(BinaryTree tree, Void p) {
-    if (isUnboxingOperation(tree)) {
-      ensureNonNull(tree.getLeftOperand());
-      ensureNonNull(tree.getRightOperand());
+  protected void checkSyntheticMethodInvocation(
+      MethodInvocationNode node, MethodInvocationTree tree) {
+    // A boxing conversion calls the static valueOf; its receiver is a class name.
+    if (ElementUtils.isStatic(node.getTarget().getMethod())) {
+      return;
     }
-    return super.visitBinary(tree, p);
+    Node receiver = node.getTarget().getReceiver();
+    if (receiver.getTree() == null) {
+      return;
+    }
+    // A try-with-resources does not call close() on a null resource (JLS 14.20.3.1).
+    if (node.getTarget().getMethod().getSimpleName().contentEquals("close")) {
+      return;
+    }
+    ensureNonNull(receiver.getTree());
   }
 
   /**
-   * Returns whether {@code tree} unboxes its operands. A string concatenation does not, nor does
-   * {@code ==} or {@code !=} on two references.
+   * Skips the assignment check for an unboxing conversion, as in {@code int i = nullableInteger}:
+   * the CFG desugars it to a call of {@code intValue()}, which {@link
+   * #checkSyntheticMethodInvocation} reports as a dereference, like every other unboxing. The
+   * Nullness Checker's {@code commonAssignmentCheck} likewise replaces the assignment error by its
+   * unboxing error. Without {@code -AcheckImpl}, the synthetic invocations are not checked, so the
+   * assignment check is kept.
    */
-  private boolean isUnboxingOperation(BinaryTree tree) {
-    if (tree.getKind() == Kind.EQUAL_TO || tree.getKind() == Kind.NOT_EQUAL_TO) {
-      return isPrimitive(typeOf(tree.getLeftOperand()))
-          != isPrimitive(typeOf(tree.getRightOperand()));
+  @Override
+  protected boolean commonAssignmentCheck(
+      AnnotatedTypeMirror varType,
+      AnnotatedTypeMirror valueType,
+      Tree valueTree,
+      String errorKey,
+      Object... extraArgs) {
+    if (checkImpl
+        && isPrimitive(varType.getUnderlyingType())
+        && !isPrimitive(valueType.getUnderlyingType())) {
+      return true;
     }
-    return !TypesUtils.isString(typeOf(tree));
-  }
-
-  @Override
-  public Void visitUnary(UnaryTree tree, Void p) {
-    ensureNonNull(tree.getExpression());
-    return super.visitUnary(tree, p);
-  }
-
-  @Override
-  public Void visitCompoundAssignment(CompoundAssignmentTree tree, Void p) {
-    if (!TypesUtils.isString(typeOf(tree.getVariable()))) {
-      ensureNonNull(tree.getVariable());
-      ensureNonNull(tree.getExpression());
-    }
-    return super.visitCompoundAssignment(tree, p);
-  }
-
-  @Override
-  public Void visitConditionalExpression(ConditionalExpressionTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
-    return super.visitConditionalExpression(tree, p);
-  }
-
-  @Override
-  public Void visitWhileLoop(WhileLoopTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
-    return super.visitWhileLoop(tree, p);
-  }
-
-  @Override
-  public Void visitDoWhileLoop(DoWhileLoopTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
-    return super.visitDoWhileLoop(tree, p);
-  }
-
-  @Override
-  public Void visitForLoop(ForLoopTree tree, Void p) {
-    if (tree.getCondition() != null) {
-      ensureNonNull(tree.getCondition());
-    }
-    return super.visitForLoop(tree, p);
+    return super.commonAssignmentCheck(varType, valueType, valueTree, errorKey, extraArgs);
   }
 
   @Override
   public Void visitNewArray(NewArrayTree tree, Void p) {
     // An array creation is always non-null.
     checkNoNullnessAnnotations(tree, annotationsOnCreatedArray(tree), "new.array.annotated");
-    for (ExpressionTree dimension : tree.getDimensions()) {
-      ensureNonNull(dimension);
-    }
     return super.visitNewArray(tree, p);
   }
 
@@ -540,21 +508,28 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return dimAnnotations.isEmpty() ? List.of() : dimAnnotations.get(0);
   }
 
-  /** A switch on a null reference throws NPE, unless it has a {@code case null}. */
+  /**
+   * A switch on a null reference throws NPE, unless it has a {@code case null}. A boxed selector is
+   * unboxed, which {@link #checkSyntheticMethodInvocation} checks; this covers a {@code String} or
+   * enum selector.
+   */
   @Override
   public Void visitSwitch(SwitchTree tree, Void p) {
-    if (!TreeUtils.hasNullCaseLabel(tree)) {
-      ensureNonNull(tree.getExpression());
-    }
+    checkSwitchSelector(tree, tree.getExpression());
     return super.visitSwitch(tree, p);
   }
 
   @Override
   public void visitSwitchExpression17(Tree switchExpressionTree) {
-    if (!TreeUtils.hasNullCaseLabel(switchExpressionTree)) {
-      ensureNonNull(SwitchExpressionUtils.getExpression(switchExpressionTree));
-    }
+    checkSwitchSelector(
+        switchExpressionTree, SwitchExpressionUtils.getExpression(switchExpressionTree));
     super.visitSwitchExpression17(switchExpressionTree);
+  }
+
+  private void checkSwitchSelector(Tree switchTree, ExpressionTree selector) {
+    if (!TreeUtils.hasNullCaseLabel(switchTree) && !TypesUtils.isBoxedPrimitive(typeOf(selector))) {
+      ensureNonNull(selector);
+    }
   }
 
   @Override

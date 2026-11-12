@@ -16,6 +16,7 @@
 // nullable; neither may the selector of a switch without `case null`. A string concatenation and a
 // comparison of two references do not unbox.
 
+import java.util.List;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -133,6 +134,25 @@ class NullableUnboxing {
     switch (s) {
       default:
     }
+  }
+
+  boolean conditionalBranch(@Nullable Boolean b, boolean c) {
+    // :: error: dereference
+    return c ? b : false;
+  }
+
+  int conditionalNumericBranch(@Nullable Integer i, boolean c) {
+    // :: error: dereference
+    return c ? i : 0;
+  }
+
+  int enhancedFor(List<@Nullable Integer> list) {
+    int sum = 0;
+    // :: error: dereference
+    for (int x : list) {
+      sum += x;
+    }
+    return sum;
   }
 
   int nonNull(Integer i, Boolean b, int[] a) {

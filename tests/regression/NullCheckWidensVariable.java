@@ -290,7 +290,7 @@ class NullCheckWidensVariable<T> {
 
   void unboxing(Integer i) {
     if (i == null) {
-      // :: error: assignment.type.incompatible
+      // :: error: dereference
       int j = i;
     }
   }
