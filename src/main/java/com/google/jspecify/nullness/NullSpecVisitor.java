@@ -454,7 +454,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       return;
     }
     Node receiver = node.getTarget().getReceiver();
-    if (receiver == null || receiver.getTree() == null) {
+    if (receiver.getTree() == null) {
       return;
     }
     // A try-with-resources does not call close() on a null resource (JLS 14.20.3.1).
