@@ -6,7 +6,7 @@ This project is **under development** to become the **reference implementation**
 
 Though it does *check your references* (to see if they're null), that's not the intended meaning!
 
-This tool's purpose is to report nullness-related findings **correctly** according to the JSpecify standard for nullness annotation semantics. 
+This tool's purpose is to report nullness-related findings **correctly** according to the JSpecify standard for nullness annotation semantics.
 
 But that's its *only* job. Notably, it is:
 
@@ -29,7 +29,7 @@ These instructions might require workarounds or fail outright. Please file an is
 
 ### Prework
 
-Ideally set `JAVA_HOME` to a JDK 11 or JDK 17 installation.
+Set `JAVA_HOME` to a JDK 17 or later installation.
 
 Make sure you have Apache Maven installed and in your PATH, or the `demo` script will fail:
 
@@ -47,19 +47,23 @@ root_dir=/absolute/pathname/for/fresh/new/directory
 
 ### Building
 
-Now get the code for this project. 
+Now get the code for this project, JSpecify's annotated JDK, and JSpecify itself,
+which the tests use.
 
 **Warning:** If you clone this project under a different name, watch out, as the later steps assume it to be named exactly `jspecify-reference-checker`.
+The build expects the annotated JDK in the sibling directory `jdk`; pass
+`-PjspecifyJdkHome=/path/to/jdk` to use a clone elsewhere.
 
 ```sh
 mkdir $root_dir
 cd $root_dir
-git clone https://github.com/jspecify/jspecify-reference-checker
+git clone https://github.com/eisop/jspecify-reference-checker
+git clone --depth 1 https://github.com/jspecify/jdk
+git clone https://github.com/jspecify/jspecify
 cd jspecify-reference-checker
 ```
 
-Now build it, which will retrieve a lot of other code too, and will take 10-15
-minutes:
+Now build it:
 
 ```sh
 ./gradlew assemble
@@ -99,12 +103,12 @@ cd $root_dir/jspecify-reference-checker
 ./gradlew test
 ```
 
-To run the (incomplete) conformance test suite, check out the `main` branch of `jspecify` and run `conformanceTest`:
+To run the (incomplete) conformance test suite, check out the `main` branch of `jspecify` and run `conformanceTests`:
 
 ```sh
 git -C $root_dir/jspecify checkout main
 cd $root_dir/jspecify-reference-checker
-./gradlew conformanceTests
+./gradlew conformanceTests --include-build ../jspecify
 ```
 
 To run the (legacy) "samples" test suite, check out the `samples-google-prototype` branch of `jspecify` and run `jspecifySamplesTest`:
@@ -112,6 +116,6 @@ To run the (legacy) "samples" test suite, check out the `samples-google-prototyp
 ```sh
 git -C $root_dir/jspecify checkout samples-google-prototype
 cd $root_dir/jspecify-reference-checker
-./gradlew jspecifySamplesTest
+./gradlew jspecifySamplesTest --include-build ../jspecify
 ```
 
