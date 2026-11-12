@@ -5,8 +5,8 @@ include 'conformance-test-framework'
 dependencyResolutionManagement {
     versionCatalogs {
         libs {
-            // Make sure to also update the version in ./demo
-            version("checkerFramework", "3.49.5-eisop1")
+            // Keep the version in sync with ./demo and ./usage-demo/build.gradle.
+            version("checkerFramework", "3.55.1-eisop1")
 
             library("checkerFramework-checker", "io.github.eisop", "checker").versionRef("checkerFramework")
             library("checkerFramework-checker-qual", "io.github.eisop", "checker-qual").versionRef("checkerFramework")

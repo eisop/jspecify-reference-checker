@@ -9,7 +9,8 @@ plugins {
 
 ext {
     versions = [
-        eisopVersion: '3.49.5-eisop1',
+        // Keep the version in sync with ../settings.gradle and ../demo.
+        eisopVersion: '3.55.1-eisop1',
         jspecifyVersion: '1.0.1',
         jspecifyReferenceCheckerVersion: '0.0.0-SNAPSHOT'
     ]
