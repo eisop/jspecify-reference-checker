@@ -494,37 +494,6 @@ tasks.register('demoTest', Exec) {
     }
 }
 
-/*
- Spotless validates its formatters' dependencies eagerly, on project configuration.
- google-java-format depends on checker-qual, which is built by a subproject.
- On a clean build, the checker-qual JAR file doesn't exist yet, so Spotless throws an error.
- The file doesn't have to be correct; it just has to be a JAR file.
- So here, before the spotless block, we create a meaningless JAR file at that location if it doesn't already exist.
- See https://github.com/jspecify/jspecify-reference-checker/issues/81
- */
-/* This work-around isn't compatible with the configuration cache.
- We don't need it, b/c we depend on EISOP CF and Spotless depends on typetools CF.
- */
-/*
- if (checkerFramework != null) {
- def cfQualJar =
- checkerFramework.projectDir.toPath()
- .resolve("checker-qual/build/libs/checker-qual-${libs.versions.checkerFramework.get()}.jar")
- def injected = project.objects.newInstance(InjectedExecOps)
- if (!cfQualJar.toFile().exists()) {
- mkdir(cfQualJar.parent)
- injected.execOps.exec {
- executable 'jar'
- args = [
- 'cf',
- cfQualJar,
- buildFile.path // Use this build script file!
- ]
- }
- }
- }
- */
-
 spotless {
     java {
         target '**/*.java'
