@@ -57,7 +57,7 @@ The build expects the annotated JDK in the sibling directory `jdk`; pass
 ```sh
 mkdir $root_dir
 cd $root_dir
-git clone https://github.com/eisop/jspecify-reference-checker
+git clone https://github.com/jspecify/jspecify-reference-checker
 git clone --depth 1 https://github.com/jspecify/jdk
 git clone https://github.com/jspecify/jspecify
 cd jspecify-reference-checker
