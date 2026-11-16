@@ -76,7 +76,7 @@ jobs:
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # Builds against a released Checker Framework.
-        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
+        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all --no-configuration-cache
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -98,7 +98,7 @@ jobs:
       - name: Run Samples Tests (EISOP release)
         if: ${{ !cancelled() && env.EISOP_RELEASE == 'true' }}
         # Builds against a released Checker Framework.
-        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
+        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all --no-configuration-cache
       - name: Run Samples Tests (EISOP build)
         if: ${{ !cancelled() && env.EISOP_RELEASE != 'true' }}
         # Builds against eisop/checker-framework master, checked out above. -PskipAnnotatedJdk
