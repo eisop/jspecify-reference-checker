@@ -51,20 +51,6 @@ import org.checkerframework.framework.source.SupportedOptions;
  */
 @SupportedOptions({"strict", "checkImpl", "showTypes"})
 public final class NullSpecChecker extends BaseTypeChecker {
-  /*
-   * A non-final field is ugly, but we can't create our Util instance in the constructor because the
-   * ProcessingEnvironment isn't available then.
-   *
-   * But why make it a field at all, as opposed to a local variable in createSourceVisitor? The
-   * problem is that NullSpecVisitor's constructor needs a way to access it through the checker
-   * object. It needs that because the BaseTypeVisitor constructor (NullSpecVisitor's
-   * superconstructor) calls createTypeFactory, and createTypeFactory needs access to util -- before
-   * the NullSpecVisitor constructor has run. Thus, to access it, it has to be able to read it
-   * through the BaseTypeVisitor.checker field, which *has* already been initialized. That means
-   * reading it through this field.
-   */
-  Util util;
-
   boolean reportedNullnessError;
 
   public NullSpecChecker() {}
@@ -116,7 +102,7 @@ public final class NullSpecChecker extends BaseTypeChecker {
    */
   @Override
   public boolean shouldSkipDefs(ClassTree tree) {
-    return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
+    return util().hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
         || super.shouldSkipDefs(tree);
   }
 
@@ -130,8 +116,16 @@ public final class NullSpecChecker extends BaseTypeChecker {
    */
   @Override
   public boolean shouldSkipDefs(MethodTree tree) {
-    return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
+    return util().hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
         || super.shouldSkipDefs(tree);
+  }
+
+  /**
+   * Returns the {@link Util} of this checker's type factory. {@code shouldSkipDefs} is only called
+   * while the visitor runs, so the type factory exists by then.
+   */
+  private Util util() {
+    return ((NullSpecAnnotatedTypeFactory) getTypeFactory()).util;
   }
 
   @Override
@@ -172,8 +166,7 @@ public final class NullSpecChecker extends BaseTypeChecker {
 
   @Override
   protected BaseTypeVisitor<?> createSourceVisitor() {
-    this.util = new Util(getElementUtils(), getTypeUtils()); // see discussion on the field
-    return new NullSpecVisitor(this, util);
+    return new NullSpecVisitor(this);
   }
 
   @Override
