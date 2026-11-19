@@ -14,21 +14,14 @@
 
 package com.google.jspecify.nullness;
 
-import static com.sun.source.util.TaskEvent.Kind.COMPILATION;
 import static javax.tools.Diagnostic.Kind.NOTE;
 
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.MethodTree;
-import com.sun.source.util.JavacTask;
-import com.sun.source.util.TaskEvent;
-import com.sun.source.util.TaskListener;
-import com.sun.source.util.TreePath;
-import com.sun.tools.javac.processing.JavacProcessingEnvironment;
-import com.sun.tools.javac.util.Log;
+import com.sun.source.tree.VariableTree;
 import java.util.NavigableSet;
 import java.util.TreeSet;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.TypeElement;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.framework.source.SupportedOptions;
@@ -51,7 +44,6 @@ import org.checkerframework.framework.source.SupportedOptions;
  */
 @SupportedOptions({"strict", "checkImpl", "showTypes"})
 public final class NullSpecChecker extends BaseTypeChecker {
-  boolean reportedNullnessError;
 
   public NullSpecChecker() {}
 
@@ -92,10 +84,9 @@ public final class NullSpecChecker extends BaseTypeChecker {
    *
    * <p>{@code BaseTypeVisitor.visitClass} consults this method before the type factory's {@code
    * preProcessClassTree} (which runs dataflow), {@code processClassTree} and {@code
-   * postProcessClassTree}, and {@code visitMethod} consults {@link #shouldSkipDefs(MethodTree)}
-   * before {@code processMethodTree}. {@code NullSpecVisitor.visitVariable} also returns early for
-   * a variable annotated with {@code @SuppressWarnings("nullness")}; CF has no such hook for
-   * variables.
+   * postProcessClassTree}, {@code visitMethod} consults {@link #shouldSkipDefs(MethodTree)} before
+   * {@code processMethodTree}, and {@code scan} consults {@link #shouldSkipDefs(VariableTree)}
+   * before visiting a variable declaration.
    *
    * @param tree a class
    * @return true if the class is not checked
@@ -128,6 +119,20 @@ public final class NullSpecChecker extends BaseTypeChecker {
     return ((NullSpecAnnotatedTypeFactory) getTypeFactory()).util;
   }
 
+  /**
+   * Returns true for a variable annotated with {@code @SuppressWarnings("nullness")}, and for the
+   * variables that CF itself skips. See {@link #shouldSkipDefs(ClassTree)} for why such a variable
+   * is skipped entirely.
+   *
+   * @param tree a variable declaration
+   * @return true if the variable declaration is not checked
+   */
+  @Override
+  public boolean shouldSkipDefs(VariableTree tree) {
+    return util().hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
+        || super.shouldSkipDefs(tree);
+  }
+
   @Override
   public boolean shouldSuppressWarnings(Element elt, String errKey) {
     /*
@@ -140,40 +145,24 @@ public final class NullSpecChecker extends BaseTypeChecker {
   }
 
   @Override
-  public void initChecker() {
-    super.initChecker();
-
-    JavacTask.instance(processingEnv)
-        .addTaskListener(
-            new TaskListener() {
-              @Override
-              public void finished(TaskEvent event) {
-                if (reportedNullnessError && event.getKind() == COMPILATION) {
-                  processingEnv
-                      .getMessager()
-                      .printMessage(
-                          NOTE,
-                          "\n"
-                              + "=====\n"
-                              + "The nullness checker is still early in development.\n"
-                              + "It has many rough edges.\n"
-                              + "For an introduction, see https://jspecify.dev/docs/user-guide\n"
-                              + "=====");
-                }
-              }
-            });
+  public void typeProcessingOver() {
+    if (getErrorCount() > 0) {
+      processingEnv
+          .getMessager()
+          .printMessage(
+              NOTE,
+              "\n"
+                  + "=====\n"
+                  + "The nullness checker is still early in development.\n"
+                  + "It has many rough edges.\n"
+                  + "For an introduction, see https://jspecify.dev/docs/user-guide\n"
+                  + "=====");
+    }
+    super.typeProcessingOver();
   }
 
   @Override
   protected BaseTypeVisitor<?> createSourceVisitor() {
     return new NullSpecVisitor(this);
-  }
-
-  @Override
-  public void typeProcess(TypeElement element, TreePath path) {
-    Log log = Log.instance(((JavacProcessingEnvironment) processingEnv).getContext());
-    int errorsBefore = log.nerrors;
-    super.typeProcess(element, path);
-    reportedNullnessError |= (log.nerrors > errorsBefore);
   }
 }

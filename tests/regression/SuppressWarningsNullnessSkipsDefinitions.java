@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// @SuppressWarnings("nullness") on a class or method skips checking it entirely, including nested
-// classes; other code is still checked.
+// @SuppressWarnings("nullness") on a class, method, or variable skips checking it entirely,
+// including nested classes and lambdas; other code is still checked.
 
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -28,6 +28,27 @@ class SuppressWarningsNullnessSkipsDefinitions {
   @SuppressWarnings("nullness")
   Object suppressedMethod(@Nullable Object o) {
     return o;
+  }
+
+  @Nullable Object nullable;
+
+  // :: error: (assignment.type.incompatible)
+  Object checkedField = nullable;
+
+  @SuppressWarnings("nullness")
+  Object suppressedField = nullable;
+
+  @SuppressWarnings("nullness")
+  Runnable suppressedLambda =
+      () -> {
+        Object o = nullable;
+      };
+
+  void locals() {
+    // :: error: (dereference)
+    String checkedLocal = nullable.toString();
+    @SuppressWarnings("nullness")
+    String suppressedLocal = nullable.toString();
   }
 
   @SuppressWarnings("nullness")
