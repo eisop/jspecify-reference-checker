@@ -170,12 +170,10 @@ if (useToolchains) {
 
 
 dependencies {
-    implementation libs.checkerFramework.checker
+    // The checker is built on the Checker Framework's framework, which brings javacutil and
+    // dataflow with it; it uses nothing from the checker artifact (the bundled checkers).
+    implementation libs.checkerFramework.framework
     implementation libs.checkerFramework.checker.qual
-    // Eventually, we would want to only depend on `framework` and
-    // `javacutil` artifacts instead of the entire `checker`.
-    // implementation libs.checkerFramework.framework
-    // implementation libs.checkerFramework.javacutil
 
     implementation libs.jspecify
 
@@ -194,10 +192,11 @@ dependencies {
 }
 
 configurations {
-    checkerFrameworkRuntimeClasspath {
+    // JavaStubifier, for the includeJSpecifyJDK task below. It ships only in checker-framework's
+    // checker artifact, not in framework, which is all the checker itself needs.
+    stubifier {
         canBeResolved = true
         canBeConsumed = false
-        extendsFrom implementation
     }
 
     // BinaryStubDiffChecker, for the binaryStubDiffTest task below. It is in checker-framework's
@@ -209,13 +208,15 @@ configurations {
 }
 
 dependencies {
+    stubifier libs.checkerFramework.checker
     binaryStubDiffChecker libs.checkerFramework.framework.test
 }
 
 // If built with `--include-build path/to/checker-framework` then
 // assemble checker-framework when assembling the reference checker.
+// This also builds checker-framework/checker/dist/checker.jar, which ./demo runs.
 if (checkerFramework != null) {
-    compileJava.dependsOn(checkerFramework.task(":checker:assembleForJavac"))
+    assemble.dependsOn(checkerFramework.task(":checker:assembleForJavac"))
 }
 
 // If built with `--include-build path/to/jspecify` then
@@ -299,8 +300,8 @@ tasks.register('includeJSpecifyJDK', JavaExec) {
     inputs.dir file(jdkRootDir)
     outputs.dir file(jdkRootDir)
 
-    // We only need the CF on the classpath.
-    classpath = configurations.checkerFrameworkRuntimeClasspath
+    // Only the stubifier tool is needed on the classpath.
+    classpath = configurations.stubifier
 
     standardOutput = System.out
     errorOutput = System.err
