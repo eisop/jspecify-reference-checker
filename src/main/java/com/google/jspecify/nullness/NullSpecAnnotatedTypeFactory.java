@@ -1663,31 +1663,13 @@ final class NullSpecAnnotatedTypeFactory
   protected void addCheckedStandardDefaults(QualifierDefaults defs) {
     /*
      * Override to *not* call the supermethod. The supermethod would set up CLIMB defaults, which we
-     * don't want.
+     * don't want. Our own checked-code defaults are set in addCheckedCodeDefaults.
      *
-     * Furthermore, while we do want defaults of our own, we don't set them here. In particular, we
-     * don't call defs.addCheckedCodeDefault(nullnessOperatorUnspecified, OTHERWISE). If we did,
-     * then that default would be applied to all unannotated type-variable usages, even in
-     * null-aware code. That's because there are multiple rounds of defaulting, 2 of which interact
-     * badly:
-     *
-     * The first round of the 2 to run is per-element defaulting. That includes our null-aware
-     * defaulting logic. (See populateNewDefaults below.) That defaulting logic would leave
-     * type-variable usages unannotated.
-     *
-     * The later round to run is checkedCodeDefaults (which would include any defaults set by this
-     * method). That logic would find the type-variable usages unannotated. So, if that logic put
-     * nullnessOperatorUnspecified on all unannotated type-variable usages, it would really put it
-     * on *all* unannotated type-variable usages -- even the ones in null-aware code.
-     *
-     * To avoid that, we set *all* defaults as per-element defaults. That setup eliminates the
-     * second round entirely. Thus, defaulting runs a single time for a given type usage. So, when
-     * the null-aware logic declines to annotate a type-variable usage, it stays unannotated
-     * afterward.
-     *
-     * The stock CF does not have this problem because it hass no such thing as a per-element
-     * default of "do not annotate this" that overrides a checkedCodeDefaults default of "do
-     * annotate this."
+     * Those include nullnessOperatorUnspecified for TYPE_VARIABLE_USE. In null-marked code, the
+     * @DefaultQualifier that @NullMarked aliases to has its own TYPE_VARIABLE_USE default,
+     * ParametricNull, which leaves type-variable usages unannotated. When a scope has a
+     * TYPE_VARIABLE_USE default, QualifierDefaults does not apply the checked-code
+     * TYPE_VARIABLE_USE default there, so those usages stay unannotated.
      */
   }
 
