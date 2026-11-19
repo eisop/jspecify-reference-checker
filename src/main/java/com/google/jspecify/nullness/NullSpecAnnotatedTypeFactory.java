@@ -426,7 +426,6 @@ final class NullSpecAnnotatedTypeFactory
 
   @Override
   protected void addCheckedCodeDefaults(QualifierDefaults defs) {
-    // TODO: add false for subpackages once overload is added to CF. Shouldn't really matter.
     defs.addCheckedCodeDefaults(minusNull, defaultLocationsMinusNull);
     defs.addCheckedCodeDefaults(unionNull, defaultLocationsUnionNull);
     defs.addCheckedCodeDefaults(nullnessOperatorUnspecified, defaultLocationsUnspecified);
