@@ -19,6 +19,7 @@ import static javax.tools.Diagnostic.Kind.NOTE;
 
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
@@ -106,10 +107,9 @@ public final class NullSpecChecker extends BaseTypeChecker {
    *
    * <p>{@code BaseTypeVisitor.visitClass} consults this method before the type factory's {@code
    * preProcessClassTree} (which runs dataflow), {@code processClassTree} and {@code
-   * postProcessClassTree}, and {@code visitMethod} consults {@link #shouldSkipDefs(MethodTree)}
-   * before {@code processMethodTree}. {@code NullSpecVisitor.visitVariable} also returns early for
-   * a variable annotated with {@code @SuppressWarnings("nullness")}; CF has no such hook for
-   * variables.
+   * postProcessClassTree}, {@code visitMethod} consults {@link #shouldSkipDefs(MethodTree)} before
+   * {@code processMethodTree}, and {@code scan} consults {@link #shouldSkipDefs(VariableTree)}
+   * before visiting a variable declaration.
    *
    * @param tree a class
    * @return true if the class is not checked
@@ -130,6 +130,20 @@ public final class NullSpecChecker extends BaseTypeChecker {
    */
   @Override
   public boolean shouldSkipDefs(MethodTree tree) {
+    return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
+        || super.shouldSkipDefs(tree);
+  }
+
+  /**
+   * Returns true for a variable annotated with {@code @SuppressWarnings("nullness")}, and for the
+   * variables that CF itself skips. See {@link #shouldSkipDefs(ClassTree)} for why such a variable
+   * is skipped entirely.
+   *
+   * @param tree a variable declaration
+   * @return true if the variable declaration is not checked
+   */
+  @Override
+  public boolean shouldSkipDefs(VariableTree tree) {
     return util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())
         || super.shouldSkipDefs(tree);
   }
