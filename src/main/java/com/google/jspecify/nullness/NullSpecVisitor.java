@@ -677,12 +677,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitVariable(VariableTree tree, Void p) {
-    // For discussion of short-circuiting, see NullSpecChecker.shouldSkipDefs(ClassTree).
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
-    if (util.hasSuppressWarningsNullness(annotations)) {
-      return null;
-    }
-
     if (isPrimitiveOrArrayOfPrimitive(tree.getType())) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
     } else if (baseTypeTree(tree.getType()) instanceof MemberSelectTree) {
