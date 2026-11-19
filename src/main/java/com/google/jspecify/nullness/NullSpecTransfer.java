@@ -853,6 +853,14 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     NullSpecStore thenStore = input.getThenStore();
     NullSpecStore elseStore = input.getElseStore();
     boolean storeChanged = refineNonNull(node.getOperand(), thenStore);
+    // CFAbstractTransfer.visitInstanceOf gives each binding variable the operand's qualifiers, so
+    // `o instanceof String s` with a nullable `o` would leave `s` nullable. The variable of a
+    // top-level binding pattern is non-null where the test holds. (A nested pattern of a record
+    // pattern can match null, so its variables are left alone.)
+    Node pattern = node.getPatternNode();
+    if (pattern instanceof LocalVariableNode) {
+      storeChanged |= refineNonNull(pattern, thenStore);
+    }
     return new ConditionalTransferResult<>(resultValue, thenStore, elseStore, storeChanged);
   }
 
