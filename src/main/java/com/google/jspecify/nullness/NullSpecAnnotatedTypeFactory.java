@@ -117,7 +117,7 @@ import org.checkerframework.javacutil.TreeUtils.MemberReferenceKind;
 final class NullSpecAnnotatedTypeFactory
     extends GenericAnnotatedTypeFactory<
         CFValue, NullSpecStore, NullSpecTransfer, NullSpecAnalysis> {
-  private final Util util;
+  final Util util;
 
   private final AnnotationMirror minusNull;
   private final AnnotationMirror unionNull;
@@ -190,8 +190,8 @@ final class NullSpecAnnotatedTypeFactory
   private static final TypeUseLocation[] nullMarkedLocationsUnspecified = new TypeUseLocation[] {};
 
   /** Constructor that takes all configuration from the provided {@code checker}. */
-  NullSpecAnnotatedTypeFactory(BaseTypeChecker checker, Util util) {
-    this(checker, util, checker.hasOption("strict"), /* withOtherWorld= */ null);
+  NullSpecAnnotatedTypeFactory(BaseTypeChecker checker) {
+    this(checker, checker.hasOption("strict"), /* withOtherWorld= */ null);
   }
 
   /**
@@ -201,13 +201,13 @@ final class NullSpecAnnotatedTypeFactory
    */
   private NullSpecAnnotatedTypeFactory(
       BaseTypeChecker checker,
-      Util util,
       boolean isLeastConvenientWorld,
       NullSpecAnnotatedTypeFactory withOtherWorld) {
     // Only use flow-sensitive type refinement if implementation code should be checked
     super(checker, checker.hasOption("checkImpl"));
 
-    this.util = util;
+    // The other world, if given, shares its Util; otherwise this is the first world to be created.
+    util = withOtherWorld != null ? withOtherWorld.util : new Util(elements, types);
 
     minusNull = util.minusNull;
     unionNull = util.unionNull;
@@ -336,7 +336,7 @@ final class NullSpecAnnotatedTypeFactory
     if (!givenOtherWorld) {
       withOtherWorld =
           new NullSpecAnnotatedTypeFactory(
-              checker, util, !isLeastConvenientWorld, /* withOtherWorld= */ this);
+              checker, !isLeastConvenientWorld, /* withOtherWorld= */ this);
     }
     if (isLeastConvenientWorld) {
       withLeastConvenientWorld = this;
