@@ -1015,6 +1015,18 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
         || super.checkMethodReferenceAsOverride(tree, p);
   }
 
+  /**
+   * Compares the pattern's variable against the non-null operand type: an {@code instanceof} test
+   * is false for null, so a nullable operand is no reason to report the pattern as unsafe.
+   */
+  @Override
+  protected boolean isInstanceOfPatternSafe(
+      AnnotatedTypeMirror variableType, AnnotatedTypeMirror expType) {
+    AnnotatedTypeMirror expTypeNonNull = expType.deepCopy();
+    expTypeNonNull.replaceAnnotation(util.minusNull);
+    return super.isInstanceOfPatternSafe(variableType, expTypeNonNull);
+  }
+
   @Override
   protected AnnotationMirrorSet getExceptionParameterLowerBoundAnnotations() {
     return AnnotationMirrorSet.singleton(util.minusNull);
