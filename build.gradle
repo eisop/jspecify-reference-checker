@@ -192,11 +192,10 @@ dependencies {
 }
 
 configurations {
-    // JavaStubifier, for the includeJSpecifyJDK task below. It ships only in checker-framework's
-    // checker artifact, not in framework, which is all the checker itself needs.
-    stubifier {
+    checkerFrameworkRuntimeClasspath {
         canBeResolved = true
         canBeConsumed = false
+        extendsFrom implementation
     }
 
     // BinaryStubDiffChecker, for the binaryStubDiffTest task below. It is in checker-framework's
@@ -208,7 +207,6 @@ configurations {
 }
 
 dependencies {
-    stubifier libs.checkerFramework.checker
     binaryStubDiffChecker libs.checkerFramework.framework.test
 }
 
@@ -300,8 +298,8 @@ tasks.register('includeJSpecifyJDK', JavaExec) {
     inputs.dir file(jdkRootDir)
     outputs.dir file(jdkRootDir)
 
-    // Only the stubifier tool is needed on the classpath.
-    classpath = configurations.stubifier
+    // We only need the CF on the classpath.
+    classpath = configurations.checkerFrameworkRuntimeClasspath
 
     standardOutput = System.out
     errorOutput = System.err
