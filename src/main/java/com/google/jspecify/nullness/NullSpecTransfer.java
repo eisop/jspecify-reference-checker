@@ -35,6 +35,7 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -853,13 +854,21 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     NullSpecStore thenStore = input.getThenStore();
     NullSpecStore elseStore = input.getElseStore();
     boolean storeChanged = refineNonNull(node.getOperand(), thenStore);
-    // CFAbstractTransfer.visitInstanceOf gives each binding variable the operand's qualifiers, so
-    // `o instanceof String s` with a nullable `o` would leave `s` nullable. The variable of a
-    // top-level binding pattern is non-null where the test holds. (A nested pattern of a record
-    // pattern can match null, so its variables are left alone.)
-    Node pattern = node.getPatternNode();
-    if (pattern instanceof LocalVariableNode) {
-      storeChanged |= refineNonNull(pattern, thenStore);
+    // CFAbstractTransfer.visitInstanceOf gives each binding variable the operand's qualifiers.
+    // Where the test holds, the variable of a pattern that does not match null is non-null. A
+    // pattern that matches null (only a type pattern nested in a record pattern can) instead gives
+    // its variable the nullness of its record component, which the type factory determines.
+    for (LocalVariableNode bindingVar : node.getBindingVariables()) {
+      if (bindingVar.getTree() instanceof VariableTree
+          && atypeFactory.getNullMatchingComponentType((VariableTree) bindingVar.getTree())
+              != null) {
+        JavaExpression expression = expressionToStoreFor(bindingVar);
+        thenStore.clearValue(expression);
+        elseStore.clearValue(expression);
+        storeChanged = true;
+      } else {
+        storeChanged |= refineNonNull(bindingVar, thenStore);
+      }
     }
     return new ConditionalTransferResult<>(resultValue, thenStore, elseStore, storeChanged);
   }
