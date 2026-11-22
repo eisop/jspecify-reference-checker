@@ -170,12 +170,10 @@ if (useToolchains) {
 
 
 dependencies {
-    implementation libs.checkerFramework.checker
+    // The checker is built on the Checker Framework's framework, which brings javacutil and
+    // dataflow with it; it uses nothing from the checker artifact (the bundled checkers).
+    implementation libs.checkerFramework.framework
     implementation libs.checkerFramework.checker.qual
-    // Eventually, we would want to only depend on `framework` and
-    // `javacutil` artifacts instead of the entire `checker`.
-    // implementation libs.checkerFramework.framework
-    // implementation libs.checkerFramework.javacutil
 
     implementation libs.jspecify
 
@@ -214,8 +212,9 @@ dependencies {
 
 // If built with `--include-build path/to/checker-framework` then
 // assemble checker-framework when assembling the reference checker.
+// This also builds checker-framework/checker/dist/checker.jar, which ./demo runs.
 if (checkerFramework != null) {
-    compileJava.dependsOn(checkerFramework.task(":checker:assembleForJavac"))
+    assemble.dependsOn(checkerFramework.task(":checker:assembleForJavac"))
 }
 
 // If built with `--include-build path/to/jspecify` then
