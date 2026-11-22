@@ -855,20 +855,15 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     NullSpecStore thenStore = input.getThenStore();
     NullSpecStore elseStore = input.getElseStore();
     boolean storeChanged = refineNonNull(node.getOperand(), thenStore);
-    // CFAbstractTransfer.visitInstanceOf gives each binding variable the operand's qualifiers.
     // Where the test holds, the variable of a pattern that does not match null is non-null. A
     // pattern that matches null (only a type pattern nested in a record pattern can) instead gives
-    // its variable the nullness of its record component, which the type factory determines.
+    // its variable the nullness of its record component, which the type factory determines and
+    // CFAbstractTransfer.visitInstanceOf stores.
     for (LocalVariableNode bindingVar : node.getBindingVariables()) {
-      if (bindingVar.getTree() instanceof VariableTree
-          && AnnotatedTypes.getNullMatchingComponentType(
+      if (!(bindingVar.getTree() instanceof VariableTree)
+          || AnnotatedTypes.getNullMatchingComponentType(
                   atypeFactory, (VariableTree) bindingVar.getTree())
-              != null) {
-        JavaExpression expression = expressionToStoreFor(bindingVar);
-        thenStore.clearValue(expression);
-        elseStore.clearValue(expression);
-        storeChanged = true;
-      } else {
+              == null) {
         storeChanged |= refineNonNull(bindingVar, thenStore);
       }
     }
