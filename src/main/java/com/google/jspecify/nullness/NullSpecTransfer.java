@@ -29,6 +29,7 @@ import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
 import static org.checkerframework.javacutil.TreeUtils.typeOf;
+import static org.checkerframework.javacutil.TypesUtils.isErasedSubtype;
 
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
@@ -46,8 +47,6 @@ import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeMirror;
-import javax.lang.model.util.Types;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
@@ -638,7 +637,9 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
       // Is the foreach over a DirectoryStream?
       if (!isErasedSubtype(
-          typeOf(forLoop.getExpression()), util.javaNioFileDirectoryStream.get())) {
+          typeOf(forLoop.getExpression()),
+          util.javaNioFileDirectoryStream.get(),
+          atypeFactory.types)) {
         continue;
       }
 
@@ -1147,11 +1148,6 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       node = ((AssignmentNode) node).getTarget();
     }
     return fromNode(node);
-  }
-
-  private boolean isErasedSubtype(TypeMirror sub, TypeMirror sup) {
-    Types types = atypeFactory.types;
-    return types.isSubtype(types.erasure(sub), types.erasure(sup));
   }
 
   /**
