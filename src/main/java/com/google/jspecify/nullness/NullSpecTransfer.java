@@ -74,6 +74,7 @@ import org.checkerframework.framework.flow.CFAbstractTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
+import org.checkerframework.framework.util.AnnotatedTypes;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 
 final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, NullSpecTransfer> {
@@ -860,7 +861,8 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     // its variable the nullness of its record component, which the type factory determines.
     for (LocalVariableNode bindingVar : node.getBindingVariables()) {
       if (bindingVar.getTree() instanceof VariableTree
-          && atypeFactory.getNullMatchingComponentType((VariableTree) bindingVar.getTree())
+          && AnnotatedTypes.getNullMatchingComponentType(
+                  atypeFactory, (VariableTree) bindingVar.getTree())
               != null) {
         JavaExpression expression = expressionToStoreFor(bindingVar);
         thenStore.clearValue(expression);

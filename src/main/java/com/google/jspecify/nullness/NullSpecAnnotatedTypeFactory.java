@@ -53,7 +53,6 @@ import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
-import com.sun.source.util.TreePath;
 import java.lang.annotation.Annotation;
 import java.util.Collection;
 import java.util.HashMap;
@@ -70,11 +69,8 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.DeclaredType;
-import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
-import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import org.checkerframework.common.basetype.BaseTypeChecker;
 import org.checkerframework.framework.flow.CFAbstractAnalysis;
@@ -117,9 +113,7 @@ import org.checkerframework.framework.util.defaults.QualifierDefaults;
 import org.checkerframework.framework.util.visualize.TypeInformationPresenter;
 import org.checkerframework.javacutil.AnnotationBuilder;
 import org.checkerframework.javacutil.ElementUtils;
-import org.checkerframework.javacutil.TreeUtils;
 import org.checkerframework.javacutil.TreeUtils.MemberReferenceKind;
-import org.checkerframework.javacutil.TreeUtilsAfterJava11.DeconstructionPatternUtils;
 
 final class NullSpecAnnotatedTypeFactory
     extends GenericAnnotatedTypeFactory<
@@ -1504,78 +1498,6 @@ final class NullSpecAnnotatedTypeFactory
         && ((AnnotatedTypeVariable) type).getLowerBound().getKind() == NULL;
   }
 
-  /**
-   * If {@code bindingVariable} is the variable of a type pattern that is nested in a record pattern
-   * and that matches null, returns the type of the record component that the pattern is matched
-   * against. Otherwise, returns null.
-   *
-   * <p>A nested type pattern that is unconditional for the type of its record component, such as
-   * {@code String s} or {@code var s} for a component of type {@code String}, matches every value
-   * of the component, including null (JLS 14.30.1 and 14.30.2). A nested type pattern that is not
-   * unconditional, and a type pattern that is not nested in a record pattern, does not match null.
-   */
-  @Nullable AnnotatedTypeMirror getNullMatchingComponentType(VariableTree bindingVariable) {
-    Element varElt = elementFromDeclaration(bindingVariable);
-    if (varElt == null || !ElementUtils.isBindingVariable(varElt)) {
-      return null;
-    }
-    TreePath path = getPath(bindingVariable);
-    if (path == null || path.getParentPath() == null) {
-      return null;
-    }
-    TreePath bindingPatternPath = path.getParentPath();
-    Tree bindingPattern = bindingPatternPath.getLeaf();
-    TreePath recordPatternPath = bindingPatternPath.getParentPath();
-    if (!TreeUtils.isBindingPatternTree(bindingPattern)
-        || recordPatternPath == null
-        || !TreeUtils.isDeconstructionPatternTree(recordPatternPath.getLeaf())) {
-      return null;
-    }
-    Tree recordPattern = recordPatternPath.getLeaf();
-    int index = -1;
-    List<? extends Tree> nestedPatterns =
-        DeconstructionPatternUtils.getNestedPatterns(recordPattern);
-    for (int i = 0; i < nestedPatterns.size(); i++) {
-      if (nestedPatterns.get(i) == bindingPattern) {
-        index = i;
-        break;
-      }
-    }
-    TypeMirror recordTM = TreeUtils.typeOf(recordPattern);
-    if (index < 0 || recordTM.getKind() != DECLARED) {
-      return null;
-    }
-    TypeElement recordElt = (TypeElement) ((DeclaredType) recordTM).asElement();
-    List<? extends Element> components = ElementUtils.getRecordComponents(recordElt);
-    if (index >= components.size()) {
-      return null;
-    }
-    Name componentName = components.get(index).getSimpleName();
-    ExecutableElement accessor = null;
-    for (ExecutableElement method : ElementFilter.methodsIn(recordElt.getEnclosedElements())) {
-      if (method.getParameters().isEmpty() && method.getSimpleName().equals(componentName)) {
-        accessor = method;
-        break;
-      }
-    }
-    if (accessor == null) {
-      return null;
-    }
-
-    // The pattern is unconditional if the erasure of the component type is a subtype of the
-    // erasure of the pattern type (JLS 14.30.3). A "var" pattern has the component type.
-    TypeMirror componentTM =
-        ((ExecutableType) types.asMemberOf((DeclaredType) recordTM, accessor)).getReturnType();
-    TypeMirror patternTM = TreeUtils.typeOf(bindingVariable);
-    if (!types.isSubtype(types.erasure(componentTM), types.erasure(patternTM))) {
-      return null;
-    }
-
-    AnnotatedTypeMirror recordType =
-        getAnnotatedTypeFromTypeTree(DeconstructionPatternUtils.getDeconstructor(recordPattern));
-    return AnnotatedTypes.asMemberOf(types, this, recordType, accessor).getReturnType();
-  }
-
   @Override
   protected TypeVariableSubstitutor createTypeVariableSubstitutor() {
     return new NullSpecTypeVariableSubstitutor();
@@ -1879,7 +1801,9 @@ final class NullSpecAnnotatedTypeFactory
      */
     private void addNullMatchingComponentAnnotation(
         VariableTree bindingVariable, AnnotatedTypeMirror type) {
-      AnnotatedTypeMirror componentType = getNullMatchingComponentType(bindingVariable);
+      AnnotatedTypeMirror componentType =
+          AnnotatedTypes.getNullMatchingComponentType(
+              NullSpecAnnotatedTypeFactory.this, bindingVariable);
       if (componentType == null
           || fromElement(elementFromDeclaration(bindingVariable))
               .hasAnnotationInHierarchy(unionNull)) {

@@ -75,4 +75,15 @@ class RecordPatternBinding {
     }
     return other;
   }
+
+  int inferredTypeArguments(Box<@Nullable String> nullable, Box<String> nonNull) {
+    if (nullable instanceof Box(String s)) {
+      // :: error: (dereference)
+      return s.length();
+    }
+    if (nonNull instanceof Box(String s)) {
+      return s.length();
+    }
+    return 0;
+  }
 }
