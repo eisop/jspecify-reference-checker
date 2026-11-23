@@ -96,9 +96,9 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   private final boolean checkImpl;
   private final Util util;
 
-  NullSpecVisitor(NullSpecChecker checker, Util util) {
+  NullSpecVisitor(NullSpecChecker checker) {
     super(checker);
-    this.util = util;
+    this.util = atypeFactory.util;
     checkImpl = checker.hasOption("checkImpl");
   }
 
@@ -1034,13 +1034,14 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   protected NullSpecAnnotatedTypeFactory createTypeFactory() {
-    // Reading util this way is ugly but necessary. See discussion in NullSpecChecker.
-    return new NullSpecAnnotatedTypeFactory(checker, ((NullSpecChecker) checker).util);
+    return new NullSpecAnnotatedTypeFactory(checker);
   }
 
   @Override
   protected TypeValidator createTypeValidator() {
-    return new NullSpecTypeValidator(checker, this, atypeFactory, ((NullSpecChecker) checker).util);
+    // Called from the superclass constructor, before this.util is assigned; the validator takes
+    // Util from the type factory, which is assigned first.
+    return new NullSpecTypeValidator(checker, this, atypeFactory);
   }
 
   /**

@@ -31,13 +31,10 @@ final class NullSpecTypeValidator extends BaseTypeValidator {
 
   /** Constructor. */
   NullSpecTypeValidator(
-      BaseTypeChecker checker,
-      NullSpecVisitor visitor,
-      NullSpecAnnotatedTypeFactory atypeFactory,
-      Util util) {
+      BaseTypeChecker checker, NullSpecVisitor visitor, NullSpecAnnotatedTypeFactory atypeFactory) {
     super(checker, visitor, atypeFactory);
 
-    nullnessOperatorUnspecified = util.nullnessOperatorUnspecified;
+    nullnessOperatorUnspecified = atypeFactory.util.nullnessOperatorUnspecified;
   }
 
   /**
