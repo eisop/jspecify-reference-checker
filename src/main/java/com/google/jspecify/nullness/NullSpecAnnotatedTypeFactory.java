@@ -208,7 +208,7 @@ final class NullSpecAnnotatedTypeFactory
     super(checker, checker.hasOption("checkImpl"));
 
     // The other world, if given, shares its Util; otherwise this is the first world to be created.
-    util = withOtherWorld != null ? withOtherWorld.util : new Util(elements, types);
+    util = withOtherWorld != null ? withOtherWorld.util : new Util(processingEnv);
 
     minusNull = util.minusNull;
     unionNull = util.unionNull;

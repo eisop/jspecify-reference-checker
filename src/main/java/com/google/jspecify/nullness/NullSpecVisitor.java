@@ -14,7 +14,6 @@
 
 package com.google.jspecify.nullness;
 
-import static com.google.jspecify.nullness.Util.IMPLEMENTATION_VARIABLE_KINDS;
 import static com.google.jspecify.nullness.Util.nameMatches;
 import static com.sun.source.tree.Tree.Kind.EXTENDS_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.PRIMITIVE_TYPE;
@@ -68,7 +67,6 @@ import java.util.List;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
@@ -684,10 +682,10 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
       checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
     }
 
-    ElementKind kind = elementFromDeclaration(tree).getKind();
-    if (kind == ENUM_CONSTANT) {
+    Element element = elementFromDeclaration(tree);
+    if (element.getKind() == ENUM_CONSTANT) {
       checkNoNullnessAnnotations(tree, annotations, "enum.constant.annotated");
-    } else if (IMPLEMENTATION_VARIABLE_KINDS.contains(kind)) {
+    } else if (ElementUtils.isLocalVariable(element)) {
       /*
        * A local's type-use annotation appears on its modifiers when written first (`@Nullable
        * String s`, per JLS 9.7.4), or on the type tree when preceded by a package or outer-type
@@ -739,7 +737,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
      * A receiver parameter (`void foo(Foo this)`) is always non-null -- like an enum constant, its
      * nullness can't meaningfully vary. It carries ElementKind.PARAMETER, the same kind as an
      * ordinary parameter, so it can't be picked out by kind the way visitVariable's
-     * IMPLEMENTATION_VARIABLE_KINDS branch picks out locals: that would wrongly flag every
+     * ElementUtils.isLocalVariable branch picks out locals: that would wrongly flag every
      * ordinary annotated parameter too. MethodTree exposes it directly, so check it here instead.
      */
     VariableTree receiverParameter = tree.getReceiverParameter();
