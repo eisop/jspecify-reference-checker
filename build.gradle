@@ -487,8 +487,11 @@ tasks.register('demoTest', Exec) {
     }
     doLast {
         def outputFileText = outputFile.get().asFile.text
-        if (!outputFileText.contains("SimpleSample.java:7: error:")) {
-            throw new AssertionError("`./demo SimpleSample.java` did not contain the expected error. Error output:\n${outputFileText}")
+        // The expected error must be the only one: a checker crash, for example, is reported as a
+        // second error.
+        if (!outputFileText.contains("SimpleSample.java:7: error:")
+                || !(outputFileText =~ /(?m)^1 error$/)) {
+            throw new AssertionError("`./demo SimpleSample.java` did not report exactly the expected error. Error output:\n${outputFileText}")
         }
     }
 }
