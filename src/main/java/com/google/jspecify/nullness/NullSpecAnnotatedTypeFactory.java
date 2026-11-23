@@ -104,6 +104,7 @@ import org.checkerframework.framework.type.treeannotator.ListTreeAnnotator;
 import org.checkerframework.framework.type.treeannotator.TreeAnnotator;
 import org.checkerframework.framework.type.typeannotator.TypeAnnotator;
 import org.checkerframework.framework.type.visitor.AnnotatedTypeVisitor;
+import org.checkerframework.framework.util.AnnotatedTypes;
 import org.checkerframework.framework.util.ContractsFromMethod;
 import org.checkerframework.framework.util.DefaultQualifierKindHierarchy;
 import org.checkerframework.framework.util.NoContractsFromMethod;
@@ -1768,6 +1769,37 @@ final class NullSpecAnnotatedTypeFactory
     }
 
     @Override
+    public Void visitVariable(VariableTree tree, AnnotatedTypeMirror type) {
+      addNullMatchingComponentAnnotation(tree, type);
+      return super.visitVariable(tree, type);
+    }
+
+    /**
+     * Gives the variable of a nested pattern that matches null the nullness of its record
+     * component, unless the pattern is annotated explicitly. A variable whose type is a type
+     * variable takes only an annotation that the component type states, so that it otherwise keeps
+     * the type variable's own nullness.
+     */
+    private void addNullMatchingComponentAnnotation(
+        VariableTree bindingVariable, AnnotatedTypeMirror type) {
+      AnnotatedTypeMirror componentType =
+          AnnotatedTypes.getNullMatchingComponentType(
+              NullSpecAnnotatedTypeFactory.this, bindingVariable);
+      if (componentType == null
+          || fromElement(elementFromDeclaration(bindingVariable))
+              .hasAnnotationInHierarchy(unionNull)) {
+        return;
+      }
+      AnnotationMirror componentAnno = componentType.getAnnotationInHierarchy(unionNull);
+      if (componentAnno == null && type.getKind() != TYPEVAR) {
+        componentAnno = componentType.getEffectiveAnnotationInHierarchy(unionNull);
+      }
+      if (componentAnno != null) {
+        type.replaceAnnotation(componentAnno);
+      }
+    }
+
+    @Override
     public Void visitLiteral(LiteralTree tree, AnnotatedTypeMirror type) {
       if (tree.getKind().asInterface() == LiteralTree.class) {
         type.addAnnotation(tree.getKind() == NULL_LITERAL ? unionNull : minusNull);
@@ -1879,6 +1911,13 @@ final class NullSpecAnnotatedTypeFactory
     @Override
     public Void visitIdentifier(IdentifierTree tree, AnnotatedTypeMirror type) {
       annotateIfEnumConstant(tree, type);
+      Element element = elementFromUse(tree);
+      if (element != null && ElementUtils.isBindingVariable(element)) {
+        Tree declaration = declarationFromElement(element);
+        if (declaration instanceof VariableTree) {
+          addNullMatchingComponentAnnotation((VariableTree) declaration, type);
+        }
+      }
 
       return super.visitIdentifier(tree, type);
     }
