@@ -69,6 +69,11 @@ jobs:
         with:
           distribution: zulu
           java-version: ${{ matrix.java_version }}
+      # Maven Central rate-limits the runners.  This makes Gradle download from Google's mirror of
+      # Maven Central, and from Maven Central only what the mirror does not have yet.  After
+      # setup-java, which writes its own ~/.m2/settings.xml.
+      - name: Use Google's mirror of Maven Central
+        uses: eisop/checker-framework/.github/actions/maven-central-mirror@master
       - name: Pin Gradle to JDK 21 via gradle.properties
         run: mkdir -p ~/.gradle && echo "org.gradle.java.home=$JAVA_HOME_21_X64" >> ~/.gradle/gradle.properties
       - name: Set up Gradle
