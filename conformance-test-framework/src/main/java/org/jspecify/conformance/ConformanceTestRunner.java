@@ -71,13 +71,12 @@ public final class ConformanceTestRunner {
     try (Stream<Path> paths = walk(testDirectory)) {
       paths
           .filter(path -> path.toFile().isDirectory())
-          .flatMap(
-              directory -> {
-                Stream<ImmutableSortedSet<Path>> groups = javaFileGroups(directory);
-                return directory.equals(testDirectory)
-                    ? groups.flatMap(files -> files.stream().map(ImmutableSortedSet::of))
-                    : groups;
-              })
+          .flatMap(directory -> {
+            Stream<ImmutableSortedSet<Path>> groups = javaFileGroups(directory);
+            return directory.equals(testDirectory)
+                ? groups.flatMap(files -> files.stream().map(ImmutableSortedSet::of))
+                : groups;
+          })
           .forEach(
               files -> report.addFiles(files, analyzer.analyze(testDirectory, files, testDeps)));
       return report.build();

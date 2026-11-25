@@ -216,10 +216,9 @@ public final class ExpectedFact extends Fact {
           if (testName != null) {
             check(!facts.isEmpty(), "no expected facts for test named %s", testName);
           }
-          facts.forEach(
-              (factLineNumber, factText) ->
-                  expectedFacts.add(
-                      new ExpectedFact(file, lineNumber, testName, factText, factLineNumber)));
+          facts.forEach((factLineNumber, factText) ->
+              expectedFacts.add(
+                  new ExpectedFact(file, lineNumber, testName, factText, factLineNumber)));
           facts.clear();
           testName = null;
         }
@@ -257,13 +256,12 @@ public final class ExpectedFact extends Fact {
           .filter(ef -> ef.testName != null)
           .collect(toImmutableSetMultimap(ef -> ef.testName, ExpectedFact::getLineNumber))
           .asMap()
-          .forEach(
-              (testName, lineNumbers) ->
-                  check(
-                      lineNumbers.size() == 1,
-                      "test name not unique: test '%s' appears on tests of lines %s",
-                      testName,
-                      lineNumbers));
+          .forEach((testName, lineNumbers) ->
+              check(
+                  lineNumbers.size() == 1,
+                  "test name not unique: test '%s' appears on tests of lines %s",
+                  testName,
+                  lineNumbers));
       return expectedFacts;
     }
 

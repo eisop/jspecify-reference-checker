@@ -1,4 +1,4 @@
-# 1,310 pass; 2 fail; 1,312 total; 99.8% score
+# 1,311 pass; 1 fail; 1,312 total; 99.9% score
 # (Note: The total includes 'optional error' assertions -- not_enough_information, conflicting_annotations, intrinsically_not_nullable, and unrecognized_location -- which never count toward pass/fail, since a conformant tool is never wrong to skip them. not_enough_information also never prints its own line below: the spec permits either an explicit warning or silence there equally, so there's no 'right' choice to nudge toward. The other three -- cases where an annotation lands somewhere the spec gives no meaning, and this checker specifically aims to flag them all -- do print, as PASS when backed by a diagnostic and MISS when not; MISS is not a failure, just a nudge to check whether this checker meant to report something there.)
 PASS: AnnotatedInnerOfNonParameterized.java:31:jspecify_nullness_intrinsically_not_nullable
 PASS: AnnotatedInnerOfNonParameterized.java:35:jspecify_nullness_intrinsically_not_nullable
@@ -147,7 +147,7 @@ PASS: ContainmentSuper.java:38:jspecify_nullness_mismatch
 PASS: ContainmentSuper.java: no unexpected facts
 PASS: ContainmentSuperVsExtends.java:24:jspecify_nullness_mismatch
 PASS: ContainmentSuperVsExtends.java: no unexpected facts
-FAIL: ContainmentSuperVsExtendsSameType.java:23:jspecify_nullness_mismatch
+PASS: ContainmentSuperVsExtendsSameType.java:23:jspecify_nullness_mismatch
 PASS: ContainmentSuperVsExtendsSameType.java: no unexpected facts
 PASS: ContravariantReturns.java:30:jspecify_nullness_mismatch
 PASS: ContravariantReturns.java:34:jspecify_nullness_mismatch

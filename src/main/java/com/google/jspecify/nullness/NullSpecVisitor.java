@@ -14,7 +14,6 @@
 
 package com.google.jspecify.nullness;
 
-import static com.google.jspecify.nullness.Util.IMPLEMENTATION_VARIABLE_KINDS;
 import static com.google.jspecify.nullness.Util.nameMatches;
 import static com.sun.source.tree.Tree.Kind.EXTENDS_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.PRIMITIVE_TYPE;
@@ -45,20 +44,20 @@ import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.IdentifierTree;
-import com.sun.source.tree.IfTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.NewArrayTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.ParameterizedTypeTree;
 import com.sun.source.tree.ParenthesizedTree;
 import com.sun.source.tree.PrimitiveTypeTree;
+import com.sun.source.tree.SwitchTree;
 import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.ThrowTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.Tree.Kind;
-import com.sun.source.tree.TypeCastTree;
 import com.sun.source.tree.TypeParameterTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreeScanner;
@@ -68,31 +67,36 @@ import java.util.List;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.util.Elements;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.checkerframework.common.basetype.BaseTypeVisitor;
 import org.checkerframework.common.basetype.TypeValidator;
+import org.checkerframework.dataflow.cfg.node.MethodInvocationNode;
+import org.checkerframework.dataflow.cfg.node.Node;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedExecutableType;
+import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedIntersectionType;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedTypeVariable;
 import org.checkerframework.framework.type.AnnotatedTypeParameterBounds;
 import org.checkerframework.framework.util.typeinference8.InferenceResult;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 import org.checkerframework.javacutil.ElementUtils;
 import org.checkerframework.javacutil.TreeUtils;
+import org.checkerframework.javacutil.TreeUtilsAfterJava11.SwitchExpressionUtils;
+import org.checkerframework.javacutil.TypesUtils;
 
 final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory> {
   private final boolean checkImpl;
   private final Util util;
 
-  NullSpecVisitor(NullSpecChecker checker, Util util) {
+  NullSpecVisitor(NullSpecChecker checker) {
     super(checker);
-    this.util = util;
+    this.util = atypeFactory.util;
     checkImpl = checker.hasOption("checkImpl");
   }
 
@@ -206,8 +210,13 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   protected void checkConstructorResult(
-      AnnotatedExecutableType constructorType, ExecutableElement constructorElement) {
-    // TODO: ensure no explicit annotations on class & constructor
+      AnnotatedExecutableType constructorType, MethodTree constructorTree) {
+    /*
+     * CF's implementation warns when a constructor's result type is not the top type. Ours is
+     * non-null by default (see CONSTRUCTOR_RESULT in NullSpecAnnotatedTypeFactory), so skip that
+     * check. A nullness annotation written on the constructor is reported by processMethodTree, and
+     * one written on the class declaration by processClassTree.
+     */
   }
 
   /**
@@ -373,9 +382,16 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitMemberSelect(tree, p);
   }
 
+  /**
+   * Requires a nullable array that an enhanced for loop iterates over to be null-exclusive. For an
+   * {@code Iterable}, the CFG synthesizes the {@code iterator()} call, which {@link
+   * #checkSyntheticMethodInvocation} checks.
+   */
   @Override
   public Void visitEnhancedForLoop(EnhancedForLoopTree tree, Void p) {
-    ensureNonNull(tree.getExpression());
+    if (typeOf(tree.getExpression()).getKind() == TypeKind.ARRAY) {
+      ensureNonNull(tree.getExpression());
+    }
     return super.visitEnhancedForLoop(tree, p);
   }
 
@@ -404,35 +420,115 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitAssert(AssertTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
     if (tree.getDetail() != null) {
       ensureNonNull(tree.getDetail());
     }
     return super.visitAssert(tree, p);
   }
 
+  /**
+   * Requires the receiver of a method invocation that the CFG synthesized for a conversion to be
+   * null-exclusive, reporting {@code dereference} as {@link #visitMemberSelect} does for an
+   * explicit call. Unboxing a null reference throws NPE (JLS 5.1.8): the CFG desugars every
+   * unboxing conversion (an operand of an operator, a condition, an array index or dimension, a
+   * cast to a primitive, a switch selector, a compound assignment) to a call of {@code intValue()}
+   * and the like, an enhanced for loop over an {@code Iterable} to a call of {@code iterator()},
+   * and a try-with-resources to a call of {@code close()}. Checking the synthesized call covers all
+   * of these at once; {@code BaseTypeVisitor.visitMethodInvocation} never sees them, since they are
+   * not part of the AST.
+   *
+   * <p>Unlike the superclass, this does not compare the receiver to the method's declared receiver
+   * type (see {@link #skipReceiverSubtypeCheck}) and does not check the arguments: a boxing
+   * conversion's {@code valueOf} argument is a primitive.
+   *
+   * <p>Without {@code -AcheckImpl}, the type factory runs no dataflow analysis, so the CFG is not
+   * built and this method is not called.
+   */
   @Override
-  public Void visitIf(IfTree tree, Void p) {
-    ensureNonNull(tree.getCondition());
-    return super.visitIf(tree, p);
-  }
-
-  @Override
-  public Void visitTypeCast(TypeCastTree tree, Void p) {
-    /*
-     * Casting a reference to a primitive type applies unboxing (JLS 5.1.8), throwing NPE if the
-     * reference is null. CF's visitTypeCast only issues a `cast.unsafe` warning, which does not
-     * report the expected nullness error. Require the operand to be null-exclusive (via
-     * ensureNonNull) when casting to a primitive. Checking `typeOf(tree.getType())` handles
-     * primitive types wrapped in AnnotatedTypeTree (e.g. `(@Nullable int) obj`).
-     */
-    if (isPrimitive(typeOf(tree.getType()))) {
-      ensureNonNull(tree.getExpression());
+  protected void checkSyntheticMethodInvocation(
+      MethodInvocationNode node, MethodInvocationTree tree) {
+    // A boxing conversion calls the static valueOf; its receiver is a class name.
+    if (ElementUtils.isStatic(node.getTarget().getMethod())) {
+      return;
     }
-    return super.visitTypeCast(tree, p);
+    Node receiver = node.getTarget().getReceiver();
+    if (receiver.getTree() == null) {
+      return;
+    }
+    // A try-with-resources does not call close() on a null resource (JLS 14.20.3.1).
+    if (node.getTarget().getMethod().getSimpleName().contentEquals("close")) {
+      return;
+    }
+    ensureNonNull(receiver.getTree());
   }
 
-  // TODO: binary, unary, compoundassign, ...
+  /**
+   * Skips the assignment check for an unboxing conversion, as in {@code int i = nullableInteger}:
+   * the CFG desugars it to a call of {@code intValue()}, which {@link
+   * #checkSyntheticMethodInvocation} reports as a dereference, like every other unboxing. The
+   * Nullness Checker's {@code commonAssignmentCheck} likewise replaces the assignment error by its
+   * unboxing error. Without {@code -AcheckImpl}, the synthetic invocations are not checked, so the
+   * assignment check is kept.
+   */
+  @Override
+  protected boolean commonAssignmentCheck(
+      AnnotatedTypeMirror varType,
+      AnnotatedTypeMirror valueType,
+      Tree valueTree,
+      String errorKey,
+      Object... extraArgs) {
+    if (checkImpl
+        && isPrimitive(varType.getUnderlyingType())
+        && !isPrimitive(valueType.getUnderlyingType())) {
+      return true;
+    }
+    return super.commonAssignmentCheck(varType, valueType, valueTree, errorKey, extraArgs);
+  }
+
+  @Override
+  public Void visitNewArray(NewArrayTree tree, Void p) {
+    // An array creation is always non-null.
+    checkNoNullnessAnnotations(tree, annotationsOnCreatedArray(tree), "new.array.annotated");
+    return super.visitNewArray(tree, p);
+  }
+
+  /**
+   * Returns the annotations written on the array that {@code tree} creates, as opposed to its
+   * component type: those on the first dimension, as in {@code new String @Nullable [n]}, or, in an
+   * array creation with an initializer, those on the first brackets, as in {@code new
+   * String @Nullable [] {}}.
+   */
+  private static List<? extends AnnotationTree> annotationsOnCreatedArray(NewArrayTree tree) {
+    if (tree.getDimensions().isEmpty()) {
+      return tree.getAnnotations();
+    }
+    List<? extends List<? extends AnnotationTree>> dimAnnotations = tree.getDimAnnotations();
+    return dimAnnotations.isEmpty() ? List.of() : dimAnnotations.get(0);
+  }
+
+  /**
+   * A switch on a null reference throws NPE, unless it has a {@code case null}. A boxed selector is
+   * unboxed, which {@link #checkSyntheticMethodInvocation} checks; this covers a {@code String} or
+   * enum selector.
+   */
+  @Override
+  public Void visitSwitch(SwitchTree tree, Void p) {
+    checkSwitchSelector(tree, tree.getExpression());
+    return super.visitSwitch(tree, p);
+  }
+
+  @Override
+  public void visitSwitchExpression17(Tree switchExpressionTree) {
+    checkSwitchSelector(
+        switchExpressionTree, SwitchExpressionUtils.getExpression(switchExpressionTree));
+    super.visitSwitchExpression17(switchExpressionTree);
+  }
+
+  private void checkSwitchSelector(Tree switchTree, ExpressionTree selector) {
+    if (!TreeUtils.hasNullCaseLabel(switchTree) && !TypesUtils.isBoxedPrimitive(typeOf(selector))) {
+      ensureNonNull(selector);
+    }
+  }
 
   @Override
   public Void visitMethodInvocation(MethodInvocationTree tree, Void p) {
@@ -444,6 +540,13 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitNewClass(NewClassTree tree, Void p) {
+    /*
+     * An object creation is always non-null. For an anonymous class, javac also copies the
+     * annotation to the anonymous class's supertype, but CF does not check the supertypes of an
+     * anonymous class, so the annotation is reported only here.
+     */
+    checkNoNullnessAnnotationsOnType(tree, tree.getIdentifier(), "new.object.annotated");
+
     ExecutableElement constructor = elementFromUse(tree);
 
     checkForAtomicReferenceConstructorCall(tree, constructor);
@@ -547,6 +650,17 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
     return super.visitTypeParameter(tree, p);
   }
 
+  /**
+   * Does nothing. CF warns when a bound's written qualifier differs from the intersection's
+   * summary, because by default the first bound wins and the others are ignored. Here every bound
+   * counts: the summary is their greatest lower bound (see {@link
+   * NullSpecAnnotatedTypeFactory#combineIntersectionBoundAnnotationsInHierarchy}), so the
+   * intersection is a subtype of what each bound says, and no written qualifier is ignored.
+   */
+  @Override
+  protected void checkExplicitAnnotationsOnIntersectionBounds(
+      AnnotatedIntersectionType intersection, List<? extends Tree> boundTrees) {}
+
   @Override
   public Void visitAnnotatedType(AnnotatedTypeTree tree, Void p) {
     List<? extends AnnotationTree> annotations = tree.getAnnotations();
@@ -561,22 +675,17 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitVariable(VariableTree tree, Void p) {
-    // For discussion of short-circuiting, see processClassTree.
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
-    if (util.hasSuppressWarningsNullness(annotations)) {
-      return null;
-    }
-
     if (isPrimitiveOrArrayOfPrimitive(tree.getType())) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
     } else if (baseTypeTree(tree.getType()) instanceof MemberSelectTree) {
       checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
     }
 
-    ElementKind kind = elementFromDeclaration(tree).getKind();
-    if (kind == ENUM_CONSTANT) {
+    Element element = elementFromDeclaration(tree);
+    if (element.getKind() == ENUM_CONSTANT) {
       checkNoNullnessAnnotations(tree, annotations, "enum.constant.annotated");
-    } else if (IMPLEMENTATION_VARIABLE_KINDS.contains(kind)) {
+    } else if (ElementUtils.isLocalVariable(element)) {
       /*
        * A local's type-use annotation appears on its modifiers when written first (`@Nullable
        * String s`, per JLS 9.7.4), or on the type tree when preceded by a package or outer-type
@@ -597,12 +706,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public void processMethodTree(String className, MethodTree tree) {
-    // For discussion of short-circuiting, see processClassTree.
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
-    if (util.hasSuppressWarningsNullness(annotations)) {
-      return;
-    }
-
     Tree returnType = tree.getReturnType();
     if (returnType != null) {
       if (isPrimitiveOrArrayOfPrimitive(returnType)) {
@@ -633,7 +737,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
      * A receiver parameter (`void foo(Foo this)`) is always non-null -- like an enum constant, its
      * nullness can't meaningfully vary. It carries ElementKind.PARAMETER, the same kind as an
      * ordinary parameter, so it can't be picked out by kind the way visitVariable's
-     * IMPLEMENTATION_VARIABLE_KINDS branch picks out locals: that would wrongly flag every
+     * ElementUtils.isLocalVariable branch picks out locals: that would wrongly flag every
      * ordinary annotated parameter too. MethodTree exposes it directly, so check it here instead.
      */
     VariableTree receiverParameter = tree.getReceiverParameter();
@@ -661,48 +765,15 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public void processClassTree(ClassTree tree) {
-    /*
-     * We short-circuit if we see @SuppressWarnings("nullness"). This is in contrast to the default
-     * CF approach, which is to continue to process code but not report warnings.
-     *
-     * The advantage to our approach is that, if our checker crashes or takes a long time for a
-     * given piece of code (perhaps especially *generated* code), users can easily disable checking
-     * for that code.
-     *
-     * Why does CF behave the way it does? I'm hoping that it's mostly because its infrastructure
-     * doesn't want to make assumptions about what kinds of warnings a given checker can produce.
-     * We, by contrast, have implemented NullSpecChecker.getSuppressWarningsPrefixes() to make *all*
-     * our warnings suppressible with @SuppressWarnings("nullness").
-     *
-     * But I do worry a little that the checker needs to do *some* processing of a class tree so
-     * that it can use that information when it checks *other* classes. If so, then our overrides of
-     * processClassTree here and preProcessClassTree in NullSpecAnnotatedTypeFactory could be
-     * trouble. But I'm cautiously optimistic that, since we never visit *trees* at all for
-     * *classpath* dependencies, we can get away without visiting them for *source* dependencies,
-     * too.
-     *
-     * Finally: For class-level suppression specifically, we can't override visitClass, which is
-     * `final`. visitClass's docs advise us to override processClassTree. But that is not sufficient
-     * to skip all expensive work, so we must also override preProcessClassTree in
-     * NullSpecAnnotatedTypeFactory.
-     */
-    if (util.hasSuppressWarningsNullness(tree.getModifiers().getAnnotations())) {
-      return;
-    }
-
     checkNoConflictingMarkingAnnotations(tree.getModifiers().getAnnotations());
 
     /*
-     * A supertype reference in an extends or implements clause is always non-null -- you can't
-     * extend or implement a possibly-null type. Nothing else visits these: they're not a
-     * variable's or method's type, so visitVariable/processMethodTree never see them, and their
-     * Kind is as ordinary as any other type-use (e.g. IDENTIFIER), so visitAnnotatedType's
-     * wildcard/primitive-specific branches don't either.
+     * A type-use annotation is also applicable to a class, interface, enum, or record declaration
+     * (JLS 9.6.4.1), so `@Nullable class Foo {}` compiles. A declaration is not a type use, though,
+     * and JSpecify gives the annotation no meaning there.
      */
-    checkSupertypeClauseNotAnnotated(tree.getExtendsClause());
-    for (Tree implementsClause : tree.getImplementsClause()) {
-      checkSupertypeClauseNotAnnotated(implementsClause);
-    }
+    checkNoNullnessAnnotations(
+        tree, tree.getModifiers().getAnnotations(), "type.declaration.annotated");
 
     checkUninitializedFields(tree);
 
@@ -710,14 +781,13 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   }
 
   /**
-   * Reports {@code supertype.annotated} if {@code clause} (an {@code extends} or {@code implements}
-   * clause, or {@code null} if the class has no {@code extends} clause) carries a nullness
-   * annotation.
+   * Reports {@code supertype.annotated} for each nullness annotation on the supertype in an {@code
+   * extends} or {@code implements} clause: you can't extend or implement a possibly-null type, so a
+   * supertype is always non-null.
    */
-  private void checkSupertypeClauseNotAnnotated(@Nullable Tree clause) {
-    if (clause != null) {
-      checkNoNullnessAnnotationsOnType(clause, clause, "supertype.annotated");
-    }
+  @Override
+  protected void checkAnnotationOnSupertype(Tree boundClause) {
+    checkNoNullnessAnnotationsOnType(boundClause, boundClause, "supertype.annotated");
   }
 
   /**
@@ -943,6 +1013,18 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
         || super.checkMethodReferenceAsOverride(tree, p);
   }
 
+  /**
+   * Compares the pattern's variable against the non-null operand type: an {@code instanceof} test
+   * is false for null, so a nullable operand is no reason to report the pattern as unsafe.
+   */
+  @Override
+  protected boolean isInstanceOfPatternSafe(
+      AnnotatedTypeMirror variableType, AnnotatedTypeMirror expType) {
+    AnnotatedTypeMirror expTypeNonNull = expType.deepCopy();
+    expTypeNonNull.replaceAnnotation(util.minusNull);
+    return super.isInstanceOfPatternSafe(variableType, expTypeNonNull);
+  }
+
   @Override
   protected AnnotationMirrorSet getExceptionParameterLowerBoundAnnotations() {
     return AnnotationMirrorSet.singleton(util.minusNull);
@@ -950,13 +1032,14 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   protected NullSpecAnnotatedTypeFactory createTypeFactory() {
-    // Reading util this way is ugly but necessary. See discussion in NullSpecChecker.
-    return new NullSpecAnnotatedTypeFactory(checker, ((NullSpecChecker) checker).util);
+    return new NullSpecAnnotatedTypeFactory(checker);
   }
 
   @Override
   protected TypeValidator createTypeValidator() {
-    return new NullSpecTypeValidator(checker, this, atypeFactory, ((NullSpecChecker) checker).util);
+    // Called from the superclass constructor, before this.util is assigned; the validator takes
+    // Util from the type factory, which is assigned first.
+    return new NullSpecTypeValidator(checker, this, atypeFactory);
   }
 
   /**
