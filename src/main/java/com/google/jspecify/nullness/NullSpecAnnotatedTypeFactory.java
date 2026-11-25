@@ -127,6 +127,10 @@ final class NullSpecAnnotatedTypeFactory
 
   private final boolean isLeastConvenientWorld;
 
+  /** See {@link #getTypeParameterDeclarationType}. */
+  private final IdentityHashMap<Element, AnnotatedTypeMirror> typeParameterDeclarationTypes =
+      new IdentityHashMap<>();
+
   /**
    * Whether {@link NullSpecTypeHierarchy} is comparing the type arguments of an enclosing type (as
    * in {@code Outer<T>} of {@code Outer<T>.Inner}) rather than the type arguments of a type itself.
@@ -881,6 +885,25 @@ final class NullSpecAnnotatedTypeFactory
   }
 
   /**
+   * Returns the type of the given type-parameter declaration. The result is shared between calls,
+   * so callers must not modify it.
+   *
+   * <p>getAnnotatedType(Element) caches its result, too, but returns a deep copy of the cached type
+   * on every call. The types are stored here under the conditions under which
+   * getAnnotatedType(Element) stores them.
+   */
+  private AnnotatedTypeMirror getTypeParameterDeclarationType(Element typeParameter) {
+    AnnotatedTypeMirror type = typeParameterDeclarationTypes.get(typeParameter);
+    if (type == null) {
+      type = getAnnotatedType(typeParameter);
+      if (shouldCache && !isParsingAnnotationFile()) {
+        typeParameterDeclarationTypes.put(typeParameter, type);
+      }
+    }
+    return type;
+  }
+
+  /**
    * @param pastCapture whether {@code type} was reached by walking out of a captured type
    *     variable's own upper bound, computed by capture conversion rather than copied from the
    *     declaration; when true, skip the declaration re-read below so as not to discard that
@@ -912,15 +935,14 @@ final class NullSpecAnnotatedTypeFactory
      * NullMarkedDirectUseOfNotNullMarkedBoundedTypeVariable.java.
      *
      * The first reason is how CF represents an annotated type-variable usage, so reading the
-     * declaration stays necessary even if CF gives every usage its declaration's bounds.
-     * getAnnotatedType(Element) caches its result, so this costs little. The exception is a bound
-     * computed by capture conversion; see `pastCapture`.
+     * declaration stays necessary even if CF gives every usage its declaration's bounds. The
+     * exception is a bound computed by capture conversion; see `pastCapture`.
      */
     if (type instanceof AnnotatedTypeVariable
         && !isCapturedTypeVariable(type.getUnderlyingType())
         && !pastCapture) {
       AnnotatedTypeVariable variable = (AnnotatedTypeVariable) type;
-      type = getAnnotatedType(variable.getUnderlyingType().asElement());
+      type = getTypeParameterDeclarationType(variable.getUnderlyingType().asElement());
     }
 
     switch (type.getKind()) {
