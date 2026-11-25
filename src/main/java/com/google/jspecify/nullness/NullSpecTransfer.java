@@ -29,12 +29,14 @@ import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromTree;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
 import static org.checkerframework.javacutil.TreeUtils.typeOf;
+import static org.checkerframework.javacutil.TypesUtils.isErasedSubtype;
 
 import com.sun.source.tree.EnhancedForLoopTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -46,8 +48,6 @@ import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeMirror;
-import javax.lang.model.util.Types;
 import org.checkerframework.dataflow.analysis.ConditionalTransferResult;
 import org.checkerframework.dataflow.analysis.RegularTransferResult;
 import org.checkerframework.dataflow.analysis.TransferInput;
@@ -73,6 +73,7 @@ import org.checkerframework.framework.flow.CFAbstractTransfer;
 import org.checkerframework.framework.flow.CFValue;
 import org.checkerframework.framework.type.AnnotatedTypeMirror;
 import org.checkerframework.framework.type.AnnotatedTypeMirror.AnnotatedDeclaredType;
+import org.checkerframework.framework.util.AnnotatedTypes;
 import org.checkerframework.javacutil.AnnotationMirrorSet;
 
 final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, NullSpecTransfer> {
@@ -638,7 +639,9 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
 
       // Is the foreach over a DirectoryStream?
       if (!isErasedSubtype(
-          typeOf(forLoop.getExpression()), util.javaNioFileDirectoryStream.get())) {
+          typeOf(forLoop.getExpression()),
+          util.javaNioFileDirectoryStream.get(),
+          atypeFactory.types)) {
         continue;
       }
 
@@ -853,6 +856,18 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
     NullSpecStore thenStore = input.getThenStore();
     NullSpecStore elseStore = input.getElseStore();
     boolean storeChanged = refineNonNull(node.getOperand(), thenStore);
+    // Where the test holds, the variable of a pattern that does not match null is non-null. A
+    // pattern that matches null (only a type pattern nested in a record pattern can) instead gives
+    // its variable the nullness of its record component, which the type factory determines and
+    // CFAbstractTransfer.visitInstanceOf stores.
+    for (LocalVariableNode bindingVar : node.getBindingVariables()) {
+      if (!(bindingVar.getTree() instanceof VariableTree)
+          || AnnotatedTypes.getNullMatchingComponentType(
+                  atypeFactory, (VariableTree) bindingVar.getTree())
+              == null) {
+        storeChanged |= refineNonNull(bindingVar, thenStore);
+      }
+    }
     return new ConditionalTransferResult<>(resultValue, thenStore, elseStore, storeChanged);
   }
 
@@ -1147,11 +1162,6 @@ final class NullSpecTransfer extends CFAbstractTransfer<CFValue, NullSpecStore, 
       node = ((AssignmentNode) node).getTarget();
     }
     return fromNode(node);
-  }
-
-  private boolean isErasedSubtype(TypeMirror sub, TypeMirror sup) {
-    Types types = atypeFactory.types;
-    return types.isSubtype(types.erasure(sub), types.erasure(sup));
   }
 
   /**

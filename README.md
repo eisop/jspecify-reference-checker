@@ -111,10 +111,10 @@ cd $root_dir/jspecify-reference-checker
 ./gradlew conformanceTests --include-build ../jspecify
 ```
 
-To run the (legacy) "samples" test suite, check out the `samples-google-prototype` branch of `jspecify` and run `jspecifySamplesTest`:
+To run the (legacy) "samples" test suite, check out the `samples-google-prototype-eisop` branch of `jspecify` and run `jspecifySamplesTest`:
 
 ```sh
-git -C $root_dir/jspecify checkout samples-google-prototype
+git -C $root_dir/jspecify checkout samples-google-prototype-eisop
 cd $root_dir/jspecify-reference-checker
 ./gradlew jspecifySamplesTest --include-build ../jspecify
 ```

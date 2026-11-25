@@ -14,9 +14,7 @@
 
 package com.google.jspecify.nullness;
 
-import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableMap;
-import static java.util.Collections.unmodifiableSet;
 import static java.util.stream.Collectors.toList;
 import static org.checkerframework.javacutil.TreeUtils.annotationsFromTypeAnnotationTrees;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
@@ -25,27 +23,24 @@ import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MethodInvocationTree;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Predicate;
+import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
-import javax.lang.model.util.SimpleAnnotationValueVisitor8;
 import javax.lang.model.util.Types;
 import org.checkerframework.javacutil.AnnotationBuilder;
+import org.checkerframework.javacutil.AnnotationUtils;
+import org.checkerframework.javacutil.ElementUtils;
 
 final class Util {
-  private final Elements elementUtils;
-  private final Types types;
+  private final ProcessingEnvironment env;
 
   final AnnotationMirror minusNull;
   final AnnotationMirror unionNull;
@@ -85,14 +80,13 @@ final class Util {
   final Optional<ExecutableElement> optionalFromJavaUtilElement;
   final Map<ExecutableElement, ExecutableElement> getterForSetter;
 
-  private final TypeMirror javaLangSuppressWarnings;
   private final ExecutableElement suppressWarningsValueElement;
 
-  Util(Elements elementUtils, Types types) {
-    this.elementUtils = elementUtils;
-    this.types = types;
+  Util(ProcessingEnvironment env) {
+    this.env = env;
 
-    Elements e = elementUtils;
+    Elements e = env.getElementUtils();
+    Types types = env.getTypeUtils();
     /*
      * Under our proposed subtyping rules, every type has a "nullness operator." There are 4
      * nullness-operator values. In this implementation, we *mostly* represent each one with an
@@ -221,9 +215,8 @@ final class Util {
     }
     this.getterForSetter = unmodifiableMap(getterForSetter);
 
-    TypeElement javaLangSuppressWarningsElement = e.getTypeElement("java.lang.SuppressWarnings");
-    javaLangSuppressWarnings = javaLangSuppressWarningsElement.asType();
-    suppressWarningsValueElement = onlyExecutableWithName(javaLangSuppressWarningsElement, "value");
+    suppressWarningsValueElement =
+        onlyExecutableWithName(e.getTypeElement("java.lang.SuppressWarnings"), "value");
 
     /*
      * TODO(cpovirk): Initialize some of these lazily if they cause performance problems.
@@ -238,9 +231,7 @@ final class Util {
   }
 
   boolean isOrOverrides(ExecutableElement overrider, ExecutableElement overridden) {
-    return overrider.equals(overridden)
-        || elementUtils.overrides(
-            overrider, overridden, (TypeElement) overrider.getEnclosingElement());
+    return ElementUtils.isMethod(overrider, overridden, env);
   }
 
   /**
@@ -367,14 +358,6 @@ final class Util {
     }
   }
 
-  static final Set<ElementKind> IMPLEMENTATION_VARIABLE_KINDS =
-      unmodifiableSet(
-          new HashSet<>(
-              asList(
-                  ElementKind.LOCAL_VARIABLE,
-                  ElementKind.RESOURCE_VARIABLE,
-                  ElementKind.EXCEPTION_PARAMETER)));
-
   boolean hasSuppressWarningsNullness(List<? extends AnnotationTree> annotations) {
     for (AnnotationMirror annotation : annotationsFromTypeAnnotationTrees(annotations)) {
       if (isSuppressWarningsNullness(annotation)) {
@@ -385,25 +368,10 @@ final class Util {
   }
 
   private boolean isSuppressWarningsNullness(AnnotationMirror annotation) {
-    if (!types.isSameType(
-        annotation.getAnnotationType().asElement().asType(), javaLangSuppressWarnings)) {
-      return false;
-    }
-    boolean[] isSuppression = new boolean[1];
-    new SimpleAnnotationValueVisitor8<Void, Void>() {
-      @Override
-      public Void visitString(String s, Void unused) {
-        isSuppression[0] |= s.equals("nullness");
-        return null;
-      }
-
-      @Override
-      public Void visitArray(List<? extends AnnotationValue> vals, Void unused) {
-        vals.forEach(v -> v.accept(this, null));
-        return null;
-      }
-    }.visit(annotation.getElementValues().get(suppressWarningsValueElement));
-    return isSuppression[0];
+    return AnnotationUtils.areSameByName(annotation, "java.lang.SuppressWarnings")
+        && AnnotationUtils.getElementValueArray(
+                annotation, suppressWarningsValueElement, String.class)
+            .contains("nullness");
   }
 
   private static void put(

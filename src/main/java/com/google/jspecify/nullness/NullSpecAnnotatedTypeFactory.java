@@ -104,6 +104,7 @@ import org.checkerframework.framework.type.treeannotator.ListTreeAnnotator;
 import org.checkerframework.framework.type.treeannotator.TreeAnnotator;
 import org.checkerframework.framework.type.typeannotator.TypeAnnotator;
 import org.checkerframework.framework.type.visitor.AnnotatedTypeVisitor;
+import org.checkerframework.framework.util.AnnotatedTypes;
 import org.checkerframework.framework.util.ContractsFromMethod;
 import org.checkerframework.framework.util.DefaultQualifierKindHierarchy;
 import org.checkerframework.framework.util.NoContractsFromMethod;
@@ -117,7 +118,7 @@ import org.checkerframework.javacutil.TreeUtils.MemberReferenceKind;
 final class NullSpecAnnotatedTypeFactory
     extends GenericAnnotatedTypeFactory<
         CFValue, NullSpecStore, NullSpecTransfer, NullSpecAnalysis> {
-  private final Util util;
+  final Util util;
 
   private final AnnotationMirror minusNull;
   private final AnnotationMirror unionNull;
@@ -190,8 +191,8 @@ final class NullSpecAnnotatedTypeFactory
   private static final TypeUseLocation[] nullMarkedLocationsUnspecified = new TypeUseLocation[] {};
 
   /** Constructor that takes all configuration from the provided {@code checker}. */
-  NullSpecAnnotatedTypeFactory(BaseTypeChecker checker, Util util) {
-    this(checker, util, checker.hasOption("strict"), /* withOtherWorld= */ null);
+  NullSpecAnnotatedTypeFactory(BaseTypeChecker checker) {
+    this(checker, checker.hasOption("strict"), /* withOtherWorld= */ null);
   }
 
   /**
@@ -201,13 +202,13 @@ final class NullSpecAnnotatedTypeFactory
    */
   private NullSpecAnnotatedTypeFactory(
       BaseTypeChecker checker,
-      Util util,
       boolean isLeastConvenientWorld,
       NullSpecAnnotatedTypeFactory withOtherWorld) {
     // Only use flow-sensitive type refinement if implementation code should be checked
     super(checker, checker.hasOption("checkImpl"));
 
-    this.util = util;
+    // The other world, if given, shares its Util; otherwise this is the first world to be created.
+    util = withOtherWorld != null ? withOtherWorld.util : new Util(processingEnv);
 
     minusNull = util.minusNull;
     unionNull = util.unionNull;
@@ -336,7 +337,7 @@ final class NullSpecAnnotatedTypeFactory
     if (!givenOtherWorld) {
       withOtherWorld =
           new NullSpecAnnotatedTypeFactory(
-              checker, util, !isLeastConvenientWorld, /* withOtherWorld= */ this);
+              checker, !isLeastConvenientWorld, /* withOtherWorld= */ this);
     }
     if (isLeastConvenientWorld) {
       withLeastConvenientWorld = this;
@@ -426,7 +427,6 @@ final class NullSpecAnnotatedTypeFactory
 
   @Override
   protected void addCheckedCodeDefaults(QualifierDefaults defs) {
-    // TODO: add false for subpackages once overload is added to CF. Shouldn't really matter.
     defs.addCheckedCodeDefaults(minusNull, defaultLocationsMinusNull);
     defs.addCheckedCodeDefaults(unionNull, defaultLocationsUnionNull);
     defs.addCheckedCodeDefaults(nullnessOperatorUnspecified, defaultLocationsUnspecified);
@@ -1663,31 +1663,13 @@ final class NullSpecAnnotatedTypeFactory
   protected void addCheckedStandardDefaults(QualifierDefaults defs) {
     /*
      * Override to *not* call the supermethod. The supermethod would set up CLIMB defaults, which we
-     * don't want.
+     * don't want. Our own checked-code defaults are set in addCheckedCodeDefaults.
      *
-     * Furthermore, while we do want defaults of our own, we don't set them here. In particular, we
-     * don't call defs.addCheckedCodeDefault(nullnessOperatorUnspecified, OTHERWISE). If we did,
-     * then that default would be applied to all unannotated type-variable usages, even in
-     * null-aware code. That's because there are multiple rounds of defaulting, 2 of which interact
-     * badly:
-     *
-     * The first round of the 2 to run is per-element defaulting. That includes our null-aware
-     * defaulting logic. (See populateNewDefaults below.) That defaulting logic would leave
-     * type-variable usages unannotated.
-     *
-     * The later round to run is checkedCodeDefaults (which would include any defaults set by this
-     * method). That logic would find the type-variable usages unannotated. So, if that logic put
-     * nullnessOperatorUnspecified on all unannotated type-variable usages, it would really put it
-     * on *all* unannotated type-variable usages -- even the ones in null-aware code.
-     *
-     * To avoid that, we set *all* defaults as per-element defaults. That setup eliminates the
-     * second round entirely. Thus, defaulting runs a single time for a given type usage. So, when
-     * the null-aware logic declines to annotate a type-variable usage, it stays unannotated
-     * afterward.
-     *
-     * The stock CF does not have this problem because it hass no such thing as a per-element
-     * default of "do not annotate this" that overrides a checkedCodeDefaults default of "do
-     * annotate this."
+     * Those include nullnessOperatorUnspecified for TYPE_VARIABLE_USE. In null-marked code, the
+     * @DefaultQualifier that @NullMarked aliases to has its own TYPE_VARIABLE_USE default,
+     * ParametricNull, which leaves type-variable usages unannotated. When a scope has a
+     * TYPE_VARIABLE_USE default, QualifierDefaults does not apply the checked-code
+     * TYPE_VARIABLE_USE default there, so those usages stay unannotated.
      */
   }
 
@@ -1784,6 +1766,37 @@ final class NullSpecAnnotatedTypeFactory
   private final class NullSpecTreeAnnotator extends TreeAnnotator {
     NullSpecTreeAnnotator(AnnotatedTypeFactory typeFactory) {
       super(typeFactory);
+    }
+
+    @Override
+    public Void visitVariable(VariableTree tree, AnnotatedTypeMirror type) {
+      addNullMatchingComponentAnnotation(tree, type);
+      return super.visitVariable(tree, type);
+    }
+
+    /**
+     * Gives the variable of a nested pattern that matches null the nullness of its record
+     * component, unless the pattern is annotated explicitly. A variable whose type is a type
+     * variable takes only an annotation that the component type states, so that it otherwise keeps
+     * the type variable's own nullness.
+     */
+    private void addNullMatchingComponentAnnotation(
+        VariableTree bindingVariable, AnnotatedTypeMirror type) {
+      AnnotatedTypeMirror componentType =
+          AnnotatedTypes.getNullMatchingComponentType(
+              NullSpecAnnotatedTypeFactory.this, bindingVariable);
+      if (componentType == null
+          || fromElement(elementFromDeclaration(bindingVariable))
+              .hasAnnotationInHierarchy(unionNull)) {
+        return;
+      }
+      AnnotationMirror componentAnno = componentType.getAnnotationInHierarchy(unionNull);
+      if (componentAnno == null && type.getKind() != TYPEVAR) {
+        componentAnno = componentType.getEffectiveAnnotationInHierarchy(unionNull);
+      }
+      if (componentAnno != null) {
+        type.replaceAnnotation(componentAnno);
+      }
     }
 
     @Override
@@ -1898,6 +1911,13 @@ final class NullSpecAnnotatedTypeFactory
     @Override
     public Void visitIdentifier(IdentifierTree tree, AnnotatedTypeMirror type) {
       annotateIfEnumConstant(tree, type);
+      Element element = elementFromUse(tree);
+      if (element != null && ElementUtils.isBindingVariable(element)) {
+        Tree declaration = declarationFromElement(element);
+        if (declaration instanceof VariableTree) {
+          addNullMatchingComponentAnnotation((VariableTree) declaration, type);
+        }
+      }
 
       return super.visitIdentifier(tree, type);
     }

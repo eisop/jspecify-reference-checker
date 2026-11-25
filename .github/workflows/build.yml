@@ -69,6 +69,11 @@ jobs:
         with:
           distribution: zulu
           java-version: ${{ matrix.java_version }}
+      # Maven Central rate-limits the runners.  This makes Gradle download from Google's mirror of
+      # Maven Central, and from Maven Central only what the mirror does not have yet.  After
+      # setup-java, which writes its own ~/.m2/settings.xml.
+      - name: Use Google's mirror of Maven Central
+        uses: eisop/checker-framework/.github/actions/maven-central-mirror@master
       - name: Pin Gradle to JDK 21 via gradle.properties
         run: mkdir -p ~/.gradle && echo "org.gradle.java.home=$JAVA_HOME_21_X64" >> ~/.gradle/gradle.properties
       - name: Set up Gradle
@@ -76,7 +81,7 @@ jobs:
       - name: Build and Test (EISOP release)
         if: ${{ env.EISOP_RELEASE == 'true' }}
         # Builds against a released Checker Framework.
-        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
+        run: ./gradlew build conformanceTests demoTest binaryStubDiffTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all --no-configuration-cache
         env:
           SHALLOW: 1
           JSPECIFY_CONFORMANCE_TEST_MODE: details
@@ -98,7 +103,7 @@ jobs:
       - name: Run Samples Tests (EISOP release)
         if: ${{ !cancelled() && env.EISOP_RELEASE == 'true' }}
         # Builds against a released Checker Framework.
-        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all
+        run: ./gradlew jspecifySamplesTest -PuseJdkVersion=${{ matrix.java_version }} --include-build ../jspecify --warning-mode all --no-configuration-cache
       - name: Run Samples Tests (EISOP build)
         if: ${{ !cancelled() && env.EISOP_RELEASE != 'true' }}
         # Builds against eisop/checker-framework master, checked out above. -PskipAnnotatedJdk

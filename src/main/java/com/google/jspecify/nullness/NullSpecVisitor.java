@@ -14,7 +14,6 @@
 
 package com.google.jspecify.nullness;
 
-import static com.google.jspecify.nullness.Util.IMPLEMENTATION_VARIABLE_KINDS;
 import static com.google.jspecify.nullness.Util.nameMatches;
 import static com.sun.source.tree.Tree.Kind.EXTENDS_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.PRIMITIVE_TYPE;
@@ -68,7 +67,6 @@ import java.util.List;
 import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
@@ -96,9 +94,9 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
   private final boolean checkImpl;
   private final Util util;
 
-  NullSpecVisitor(NullSpecChecker checker, Util util) {
+  NullSpecVisitor(NullSpecChecker checker) {
     super(checker);
-    this.util = util;
+    this.util = atypeFactory.util;
     checkImpl = checker.hasOption("checkImpl");
   }
 
@@ -677,22 +675,17 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   public Void visitVariable(VariableTree tree, Void p) {
-    // For discussion of short-circuiting, see NullSpecChecker.shouldSkipDefs(ClassTree).
     List<? extends AnnotationTree> annotations = tree.getModifiers().getAnnotations();
-    if (util.hasSuppressWarningsNullness(annotations)) {
-      return null;
-    }
-
     if (isPrimitiveOrArrayOfPrimitive(tree.getType())) {
       checkNoNullnessAnnotations(tree, annotations, "primitive.annotated");
     } else if (baseTypeTree(tree.getType()) instanceof MemberSelectTree) {
       checkNoNullnessAnnotations(tree, annotations, "outer.annotated");
     }
 
-    ElementKind kind = elementFromDeclaration(tree).getKind();
-    if (kind == ENUM_CONSTANT) {
+    Element element = elementFromDeclaration(tree);
+    if (element.getKind() == ENUM_CONSTANT) {
       checkNoNullnessAnnotations(tree, annotations, "enum.constant.annotated");
-    } else if (IMPLEMENTATION_VARIABLE_KINDS.contains(kind)) {
+    } else if (ElementUtils.isLocalVariable(element)) {
       /*
        * A local's type-use annotation appears on its modifiers when written first (`@Nullable
        * String s`, per JLS 9.7.4), or on the type tree when preceded by a package or outer-type
@@ -744,7 +737,7 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
      * A receiver parameter (`void foo(Foo this)`) is always non-null -- like an enum constant, its
      * nullness can't meaningfully vary. It carries ElementKind.PARAMETER, the same kind as an
      * ordinary parameter, so it can't be picked out by kind the way visitVariable's
-     * IMPLEMENTATION_VARIABLE_KINDS branch picks out locals: that would wrongly flag every
+     * ElementUtils.isLocalVariable branch picks out locals: that would wrongly flag every
      * ordinary annotated parameter too. MethodTree exposes it directly, so check it here instead.
      */
     VariableTree receiverParameter = tree.getReceiverParameter();
@@ -1020,6 +1013,18 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
         || super.checkMethodReferenceAsOverride(tree, p);
   }
 
+  /**
+   * Compares the pattern's variable against the non-null operand type: an {@code instanceof} test
+   * is false for null, so a nullable operand is no reason to report the pattern as unsafe.
+   */
+  @Override
+  protected boolean isInstanceOfPatternSafe(
+      AnnotatedTypeMirror variableType, AnnotatedTypeMirror expType) {
+    AnnotatedTypeMirror expTypeNonNull = expType.deepCopy();
+    expTypeNonNull.replaceAnnotation(util.minusNull);
+    return super.isInstanceOfPatternSafe(variableType, expTypeNonNull);
+  }
+
   @Override
   protected AnnotationMirrorSet getExceptionParameterLowerBoundAnnotations() {
     return AnnotationMirrorSet.singleton(util.minusNull);
@@ -1027,13 +1032,14 @@ final class NullSpecVisitor extends BaseTypeVisitor<NullSpecAnnotatedTypeFactory
 
   @Override
   protected NullSpecAnnotatedTypeFactory createTypeFactory() {
-    // Reading util this way is ugly but necessary. See discussion in NullSpecChecker.
-    return new NullSpecAnnotatedTypeFactory(checker, ((NullSpecChecker) checker).util);
+    return new NullSpecAnnotatedTypeFactory(checker);
   }
 
   @Override
   protected TypeValidator createTypeValidator() {
-    return new NullSpecTypeValidator(checker, this, atypeFactory, ((NullSpecChecker) checker).util);
+    // Called from the superclass constructor, before this.util is assigned; the validator takes
+    // Util from the type factory, which is assigned first.
+    return new NullSpecTypeValidator(checker, this, atypeFactory);
   }
 
   /**

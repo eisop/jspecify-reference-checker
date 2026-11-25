@@ -7,7 +7,7 @@ plugins {
     id 'java'
     id 'maven-publish'
 
-    id 'com.diffplug.spotless' version '8.11.0'
+    id 'com.diffplug.spotless' version '8.12.0'
     id 'io.github.gradle-nexus.publish-plugin' version '2.0.0'
     id 'net.ltgt.errorprone' version '5.2.0'
     // To show task list as a tree, run: ./gradlew <taskname> taskTree
@@ -170,12 +170,10 @@ if (useToolchains) {
 
 
 dependencies {
-    implementation libs.checkerFramework.checker
+    // The checker is built on the Checker Framework's framework, which brings javacutil and
+    // dataflow with it; it uses nothing from the checker artifact (the bundled checkers).
+    implementation libs.checkerFramework.framework
     implementation libs.checkerFramework.checker.qual
-    // Eventually, we would want to only depend on `framework` and
-    // `javacutil` artifacts instead of the entire `checker`.
-    // implementation libs.checkerFramework.framework
-    // implementation libs.checkerFramework.javacutil
 
     implementation libs.jspecify
 
@@ -214,8 +212,9 @@ dependencies {
 
 // If built with `--include-build path/to/checker-framework` then
 // assemble checker-framework when assembling the reference checker.
+// This also builds checker-framework/checker/dist/checker.jar, which ./demo runs.
 if (checkerFramework != null) {
-    compileJava.dependsOn(checkerFramework.task(":checker:assembleForJavac"))
+    assemble.dependsOn(checkerFramework.task(":checker:assembleForJavac"))
 }
 
 // If built with `--include-build path/to/jspecify` then
@@ -488,8 +487,11 @@ tasks.register('demoTest', Exec) {
     }
     doLast {
         def outputFileText = outputFile.get().asFile.text
-        if (!outputFileText.contains("SimpleSample.java:7: error:")) {
-            throw new AssertionError("`./demo SimpleSample.java` did not contain the expected error. Error output:\n${outputFileText}")
+        // The expected error must be the only one: a checker crash, for example, is reported as a
+        // second error.
+        if (!outputFileText.contains("SimpleSample.java:7: error:")
+                || !(outputFileText =~ /(?m)^1 error$/)) {
+            throw new AssertionError("`./demo SimpleSample.java` did not report exactly the expected error. Error output:\n${outputFileText}")
         }
     }
 }
