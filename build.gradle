@@ -487,11 +487,11 @@ tasks.register('demoTest', Exec) {
     }
     doLast {
         def outputFileText = outputFile.get().asFile.text
-        // The expected error must be the only one: a checker crash, for example, is reported as a
-        // second error.
+        // The expected errors must be the only ones: a checker crash, for example, is reported as a
+        // third error.
         if (!outputFileText.contains("SimpleSample.java:7: error:")
-                || !(outputFileText =~ /(?m)^1 error$/)) {
-            throw new AssertionError("`./demo SimpleSample.java` did not report exactly the expected error. Error output:\n${outputFileText}")
+                || !(outputFileText =~ /(?m)^2 errors$/)) {
+            throw new AssertionError("`./demo SimpleSample.java JdkSample.java` did not report exactly the two expected errors. Error output:\n${outputFileText}")
         }
         if (!outputFileText.contains("JdkSample.java:8: error:")) {
             throw new AssertionError("`./demo JdkSample.java` did not contain the expected error, so it may not use the JSpecify annotated JDK. Error output:\n${outputFileText}")
