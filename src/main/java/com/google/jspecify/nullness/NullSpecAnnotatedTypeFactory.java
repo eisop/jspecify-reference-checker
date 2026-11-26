@@ -34,6 +34,7 @@ import static javax.lang.model.type.TypeKind.WILDCARD;
 import static org.checkerframework.framework.util.AnnotatedTypes.areCorrespondingTypeVariables;
 import static org.checkerframework.framework.util.AnnotatedTypes.asSuper;
 import static org.checkerframework.javacutil.AnnotationUtils.areSame;
+import static org.checkerframework.javacutil.AnnotationUtils.areSameByName;
 import static org.checkerframework.javacutil.TreeUtils.elementFromDeclaration;
 import static org.checkerframework.javacutil.TreeUtils.elementFromUse;
 import static org.checkerframework.javacutil.TreeUtils.isNullExpression;
@@ -576,7 +577,8 @@ final class NullSpecAnnotatedTypeFactory
 
     @Override
     public boolean isParametricQualifier(AnnotationMirror qualifier) {
-      return areSame(parametricNull, qualifier);
+      // ParametricNull has no elements, so comparing the names is sufficient.
+      return areSameByName(parametricNull, qualifier);
     }
   }
 
