@@ -24,6 +24,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      # Maven Central rate-limits the runners.  This makes Gradle download from Google's mirror of
+      # Maven Central, and from Maven Central only what the mirror does not have yet.  After
+      # setup-java, which writes its own ~/.m2/settings.xml.
+      - name: Use Google's mirror of Maven Central
+        uses: eisop/checker-framework/.github/actions/maven-central-mirror@master
       - name: Check out JSpecify
         uses: actions/checkout@v7
         with:
